@@ -28,9 +28,8 @@ class Settings(BaseSettings):
     no_mistakes_bin: str = Field(
         "no-mistakes", description="no-mistakes binary (PATH or absolute)."
     )
-    firstmate_home: str = Field("", description="Path to a firstmate AGENTS.md home directory.")
-    firstmate_agent_cmd: str = Field(
-        "claude", description="Agent harness that follows firstmate's AGENTS.md."
+    firstmate_home: str = Field(
+        "", description="Path to a firstmate home directory (where its bin/ scripts live)."
     )
 
     # Workspace + delivery.

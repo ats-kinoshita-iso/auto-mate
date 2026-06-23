@@ -1,10 +1,16 @@
 """Adapter over ``no-mistakes``, the safe-push gate.
 
-no-mistakes installs a local git-remote proxy: after ``no-mistakes init``, pushing
-to the ``no-mistakes`` remote runs an AI validation pipeline
-(review -> test -> docs -> lint) and only forwards the branch to the real target
-and opens a PR once every check is green. This adapter initializes the gate and
-pushes a worktree's branch through it.
+no-mistakes installs a local git-remote proxy. ``no-mistakes init`` creates a bare
+repo and adds a remote literally named ``no-mistakes`` (internal/gate/gate.go);
+pushing to it triggers a background-daemon pipeline (review -> test -> document ->
+lint -> push -> PR) that forwards to the real target and opens a PR only when every
+check is green. Pushing to that remote is the ONLY way to invoke the gate - there is
+no dedicated ship subcommand (confirmed from source).
+
+Notes: the gate needs the daemon running (``no-mistakes daemon``). The authoritative
+PR URL comes from ``no-mistakes axi status`` (TOON output), not reliably from the
+push stdout, so the scrape below is best-effort. A fully headless run can instead use
+``no-mistakes axi run --intent <goal> --yes``.
 """
 
 from __future__ import annotations
@@ -36,6 +42,8 @@ class NoMistakesAdapter:
 
     def gate(self, worktree: Worktree) -> GateResult:
         """Push the worktree's branch through the gate; a PR opens only when green."""
+        # Pushing to the `no-mistakes` remote is the only trigger; the daemon runs the
+        # pipeline and opens the PR asynchronously once every check passes.
         result = self._runner.run(
             ["git", "push", "no-mistakes", worktree.branch], cwd=worktree.path
         )

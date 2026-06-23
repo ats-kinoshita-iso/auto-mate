@@ -26,12 +26,23 @@ class RecordingRunner(CommandRunner):
         )
 
 
-def test_treehouse_create_builds_command_and_branch() -> None:
-    runner = RecordingRunner()
+def test_treehouse_create_acquires_lease_and_cuts_branch() -> None:
+    runner = RecordingRunner(stdout="/home/u/.treehouse/abc/1/repo")
     adapter = TreehouseAdapter("treehouse", runner=runner)
     worktree = adapter.create(Task(id="abc", prompt="do it", repo="/repo"))
+    assert worktree.path == "/home/u/.treehouse/abc/1/repo"
     assert worktree.branch == "automate/abc"
-    assert runner.calls == [["treehouse", "new", "--repo", "/repo", "--branch", "automate/abc"]]
+    assert runner.calls == [
+        ["treehouse", "get", "--lease", "--lease-holder", "abc"],
+        ["git", "-C", "/home/u/.treehouse/abc/1/repo", "switch", "-c", "automate/abc"],
+    ]
+
+
+def test_treehouse_release_returns_worktree() -> None:
+    runner = RecordingRunner()
+    adapter = TreehouseAdapter("treehouse", runner=runner)
+    adapter.release(Worktree(task_id="abc", path="/wt", branch="automate/abc"))
+    assert runner.calls == [["treehouse", "return", "/wt", "--force"]]
 
 
 def test_no_mistakes_gate_parses_pr_url() -> None:
@@ -55,6 +66,20 @@ def test_firstmate_tolerates_missing_home_only_in_dry_run() -> None:
     live = FirstmateAdapter(home="", runner=RecordingRunner())
     with pytest.raises(ValueError, match="firstmate home"):
         live.run(task, worktree)
+
+
+def test_firstmate_drives_bin_scripts() -> None:
+    runner = RecordingRunner()
+    adapter = FirstmateAdapter(home="/fm", runner=runner)
+    crew = adapter.run(
+        Task(id="abc", prompt="x", repo="myrepo"),
+        Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+    )
+    assert crew.changed is True
+    assert runner.calls == [
+        ["bash", "/fm/bin/fm-brief.sh", "abc", "myrepo"],
+        ["bash", "/fm/bin/fm-spawn.sh", "abc", "projects/myrepo"],
+    ]
 
 
 def test_command_gate_disabled_when_no_command() -> None:

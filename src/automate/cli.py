@@ -7,6 +7,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from automate.adapters import TreehouseAdapter
 from automate.config import Settings, get_settings
 from automate.models import RunStatus, Task
 from automate.orchestrator import Orchestrator
@@ -76,13 +77,13 @@ def config_show() -> None:
 
 
 @worktrees_app.command("ls")
-def worktrees_ls() -> None:
-    """List worktrees known to the treehouse pool."""
+def worktrees_ls(
+    repo: Annotated[str, typer.Option("--repo", "-r", help="Repository to inspect.")] = ".",
+) -> None:
+    """Show treehouse's worktree pool for a repository."""
     settings = get_settings()
-    # TODO: query the treehouse pool once its non-interactive list command is confirmed.
-    console.print(
-        f"[dim]worktree listing not yet wired (treehouse_bin={settings.treehouse_bin})[/dim]"
-    )
+    adapter = TreehouseAdapter(settings.treehouse_bin, dry_run=settings.dry_run)
+    console.print(adapter.status(repo), markup=False)  # raw tool output, not Rich markup
 
 
 def main() -> None:

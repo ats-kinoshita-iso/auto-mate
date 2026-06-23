@@ -83,7 +83,7 @@ Key knobs:
 
 - `AUTOMATE_DRY_RUN` - when `true` (default), adapters echo commands instead of executing them.
 - `AUTOMATE_TREEHOUSE_BIN`, `AUTOMATE_NO_MISTAKES_BIN` - paths to those binaries (or your forks).
-- `AUTOMATE_FIRSTMATE_HOME`, `AUTOMATE_FIRSTMATE_AGENT_CMD` - firstmate's AGENTS.md directory and the harness that drives it.
+- `AUTOMATE_FIRSTMATE_HOME` - firstmate's home directory (the checkout containing its `bin/` scripts).
 - `AUTOMATE_GOVERNANCE_CMD`, `AUTOMATE_CODEGEN_CMD` - commands for the henkaten-council and trine-eval gates; empty disables a gate.
 
 ## Development

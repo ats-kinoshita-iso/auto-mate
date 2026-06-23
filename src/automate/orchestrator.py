@@ -36,11 +36,7 @@ class Orchestrator:
         dry = settings.dry_run
         return cls(
             treehouse=TreehouseAdapter(settings.treehouse_bin, dry_run=dry),
-            firstmate=FirstmateAdapter(
-                home=settings.firstmate_home,
-                agent_cmd=settings.firstmate_agent_cmd,
-                dry_run=dry,
-            ),
+            firstmate=FirstmateAdapter(home=settings.firstmate_home, dry_run=dry),
             no_mistakes=NoMistakesAdapter(settings.no_mistakes_bin, dry_run=dry),
             gates=[
                 CommandGate("henkaten-council", settings.governance_cmd, dry_run=dry),
