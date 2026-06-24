@@ -25,7 +25,7 @@ Any object with the right methods satisfies them - the bundled adapters, my fork
 | Port | Method | Implemented by |
 |---|---|---|
 | `WorktreeProvider` | `create`, `release` | `TreehouseAdapter` |
-| `CrewRunner` | `run` | `FirstmateAdapter` |
+| `CrewRunner` | `run` | `DirectCrewAdapter` (default), `FirstmateAdapter` |
 | `Gate` | `evaluate` | `CommandGate` (henkaten-council, trine-eval) |
 | `ShipGate` | `gate` | `NoMistakesAdapter` |
 
@@ -34,7 +34,7 @@ Any object with the right methods satisfies them - the bundled adapters, my fork
 [`Orchestrator.run`](../src/automate/orchestrator.py) executes a [`Task`](../src/automate/models.py) through these stages:
 
 1. Provision - `treehouse` creates an isolated worktree on branch `automate/<task-id>`.
-2. Crew - `firstmate` runs a crew of agents in that worktree and reports a `CrewResult`.
+2. Crew - the configured crew backend (`direct` agent by default, or `firstmate`) runs the task in that worktree and reports a `CrewResult`.
 3. Short-circuit - if the crew produced no changes, release the worktree and finish as `no_changes`.
 4. Gates - run every `Gate` (governance, then codegen/eval); collect a `Verdict` from each.
 5. Decide - if any gate fails, finish as `gated` without shipping.

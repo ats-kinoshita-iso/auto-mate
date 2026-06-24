@@ -28,16 +28,20 @@ What is verified-from-source is marked as such; what still needs a running binar
 - How the adapter drives it: `init()` runs `no-mistakes init`; `gate()` runs `git push no-mistakes <branch>` in the worktree.
 - Provisional: the PR URL is **not** reliably on the push stdout (the daemon opens it asynchronously); the authoritative source is `no-mistakes axi status` (TOON output). The regex scrape is best-effort. Wiring `axi run`/`axi status` for a fully headless, PR-URL-accurate flow is a follow-up.
 
-## firstmate - `CrewRunner`
+## Crew backends - `CrewRunner`
 
-[`FirstmateAdapter`](../src/automate/adapters/firstmate.py)
+The crew stage is pluggable: any `CrewRunner` works, and the backend is chosen by `AUTOMATE_CREW_BACKEND`.
 
-- What it is: not a flag CLI and not a dispatch API. firstmate is a conversational supervisor - you *talk* to a first-mate agent (launch claude/codex/opencode/pi in the firstmate home) and its `AGENTS.md` runs a crew of agents in tmux + treehouse worktrees. There is no `-p`/prompt flag; harnesses are launched by firstmate itself with the brief as a positional argument.
-- The programmatic surface is firstmate's `bin/` scripts: `bin/fm-brief.sh <id> <repo>` scaffolds a task brief, `bin/fm-spawn.sh <id> projects/<repo>` spawns a crewmate, `bin/fm-watch.sh` supervises, and crew status lands in `state/<id>.status` / `data/<id>/report.md`.
-- **Design fork (needs a decision):**
-  - **(A) Drive the firstmate agent** - hand a high-level instruction to a first-mate agent and let it supervise. Matches firstmate's intended "talk to one agent" model, but is conversational, not cleanly headless.
-  - **(B) Drive the `bin/` scripts directly** - treat firstmate as a crew-execution library and let auto-mate be the supervisor. Headless and fits auto-mate's role, but bypasses the first-mate agent's judgment (effectively a different system built on firstmate's machinery).
-  - This adapter currently stubs toward **(B)** (`fm-brief.sh` + `fm-spawn.sh`), since auto-mate is itself the programmatic orchestrator. Revisit if you'd rather auto-mate delegate to a real first-mate agent.
+### direct (default) - [`DirectCrewAdapter`](../src/automate/adapters/direct.py)
+
+Runs a single agent harness (`AUTOMATE_AGENT_CMD`, default `claude`) directly in the task's worktree with the prompt, then reports whether it left changes (dirty worktree or commits beyond the base ref).
+It needs only an agent on PATH, so auto-mate runs anywhere - which is why it is the default.
+
+### firstmate - [`FirstmateAdapter`](../src/automate/adapters/firstmate.py)
+
+- What it is: not a flag CLI and not a dispatch API. firstmate is a conversational supervisor - you *talk* to a first-mate agent (launch claude/codex/opencode/pi in the firstmate home) and its `AGENTS.md` runs a crew in tmux + treehouse worktrees. There is no `-p` flag; harnesses are launched by firstmate with the brief as a positional argument.
+- Programmatic surface: firstmate's `bin/` scripts - `bin/fm-brief.sh <id> <repo>` scaffolds a brief, `bin/fm-spawn.sh <id> projects/<repo>` spawns a crewmate, `bin/fm-watch.sh` supervises, and crew status lands in `state/<id>.status` / `data/<id>/report.md`.
+- **Decision: drive the `bin/` scripts (option B).** firstmate already supervises *and ships* (it has no-mistakes built into its delivery modes), so delegating the whole task to a first-mate agent (option A) would ship work before auto-mate's governance/eval gates could run - defeating auto-mate's purpose. So auto-mate stays the single supervisor and uses firstmate as a crew-execution library. Trade-off: this bypasses the first-mate agent's own intake/supervision judgment.
 - Provisional / platform: firstmate is **macOS/Linux only** and needs tmux + a detected harness, so this path cannot be validated on Windows. Writing `task.prompt` into the brief, mapping `task.repo` to a `projects/` entry, and supervising to completion remain `TODO`.
 
 ## Harness gates - `Gate`

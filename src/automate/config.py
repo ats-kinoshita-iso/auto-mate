@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,8 +28,13 @@ class Settings(BaseSettings):
     no_mistakes_bin: str = Field(
         "no-mistakes", description="no-mistakes binary (PATH or absolute)."
     )
+    # Crew engine.
+    crew_backend: Literal["direct", "firstmate"] = Field(
+        "direct", description="Crew engine: 'direct' (one agent in the worktree) or 'firstmate'."
+    )
+    agent_cmd: str = Field("claude", description="Agent harness for the 'direct' crew backend.")
     firstmate_home: str = Field(
-        "", description="Path to a firstmate home directory (where its bin/ scripts live)."
+        "", description="firstmate home directory (bin/ scripts); used when crew_backend=firstmate."
     )
 
     # Workspace + delivery.

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from automate.adapters import FirstmateAdapter, NoMistakesAdapter, TreehouseAdapter
+from automate.adapters import (
+    DirectCrewAdapter,
+    FirstmateAdapter,
+    NoMistakesAdapter,
+    TreehouseAdapter,
+)
 from automate.adapters.base import CommandResult, CommandRunner
 from automate.harnesses import CommandGate
 from automate.models import CrewResult, Task, Worktree
@@ -80,6 +85,27 @@ def test_firstmate_drives_bin_scripts() -> None:
         ["bash", "/fm/bin/fm-brief.sh", "abc", "myrepo"],
         ["bash", "/fm/bin/fm-spawn.sh", "abc", "projects/myrepo"],
     ]
+
+
+def test_direct_crew_runs_agent_and_reports_no_changes() -> None:
+    runner = RecordingRunner()  # empty stdout -> clean worktree, not ahead -> no changes
+    adapter = DirectCrewAdapter(agent_cmd="claude --print", runner=runner)
+    crew = adapter.run(
+        Task(id="abc", prompt="add dark mode", repo="/repo"),
+        Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+    )
+    assert runner.calls[0] == ["claude", "--print", "add dark mode"]
+    assert crew.changed is False
+
+
+def test_direct_crew_detects_dirty_worktree() -> None:
+    runner = RecordingRunner(stdout="M src/app.py")
+    adapter = DirectCrewAdapter(runner=runner)
+    crew = adapter.run(
+        Task(id="abc", prompt="x", repo="/repo"),
+        Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+    )
+    assert crew.changed is True
 
 
 def test_command_gate_disabled_when_no_command() -> None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from automate.adapters import DirectCrewAdapter, FirstmateAdapter
+from automate.config import Settings
 from automate.models import CrewResult, GateResult, RunStatus, Task, Verdict, Worktree
 from automate.orchestrator import Orchestrator
 
@@ -19,7 +21,7 @@ class FakeTreehouse:
         self.released.append(worktree.task_id)
 
 
-class FakeFirstmate:
+class FakeCrew:
     def __init__(self, *, changed: bool = True) -> None:
         self._changed = changed
 
@@ -53,7 +55,7 @@ def _build(
     treehouse = FakeTreehouse()
     orchestrator = Orchestrator(
         treehouse=treehouse,
-        firstmate=FakeFirstmate(changed=changed),
+        crew=FakeCrew(changed=changed),
         no_mistakes=FakeShip(pushed=pushed),
         gates=[FakeGate("henkaten-council", passed=gate_passes), FakeGate("trine-eval")],
     )
@@ -102,10 +104,17 @@ def test_stage_exception_is_captured_as_failed() -> None:
 
     orchestrator = Orchestrator(
         treehouse=Boom(),
-        firstmate=FakeFirstmate(),
+        crew=FakeCrew(),
         no_mistakes=FakeShip(),
         gates=[],
     )
     record = orchestrator.run(TASK)
     assert record.status is RunStatus.FAILED
     assert any("treehouse offline" in line for line in record.log)
+
+
+def test_from_settings_selects_crew_backend() -> None:
+    direct = Orchestrator.from_settings(Settings(_env_file=None, crew_backend="direct"))
+    assert isinstance(direct._crew, DirectCrewAdapter)
+    firstmate = Orchestrator.from_settings(Settings(_env_file=None, crew_backend="firstmate"))
+    assert isinstance(firstmate._crew, FirstmateAdapter)

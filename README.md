@@ -16,13 +16,14 @@ It orchestrates tools that already do those well, and layers my governance and c
 | Layer | Tool | Role |
 |---|---|---|
 | Isolation | [`treehouse`](https://github.com/kunchenguid/treehouse) | A pool of reusable, isolated git worktrees, one per task |
-| Crew | [`firstmate`](https://github.com/kunchenguid/firstmate) | Talk to one agent; it runs a crew of agents to do the work |
+| Crew | `direct` / [`firstmate`](https://github.com/kunchenguid/firstmate) | Run one agent in the worktree, or drive a full firstmate crew |
 | Governance gate | `henkaten-council` | Change-point / governance review of the crew's output |
 | Codegen / eval gate | `trine-eval` | Contract and quality evaluation of the result |
 | Ship gate | [`no-mistakes`](https://github.com/kunchenguid/no-mistakes) | Safe-push proxy: review -> test -> lint -> PR, only when green |
 
 The three upstream tools are external dependencies, referenced by command path.
 They are **not** vendored or forked here; my forks drop in later by pointing the config at them.
+The crew stage is pluggable via `AUTOMATE_CREW_BACKEND`: the default `direct` backend runs a single agent in the worktree so auto-mate works anywhere, while `firstmate` drives a full multi-agent crew (macOS/Linux).
 
 ## The execution lifecycle
 
@@ -32,8 +33,8 @@ task
   ▼  treehouse
 provision an isolated worktree
   │
-  ▼  firstmate
-run a crew of agents in the worktree
+  ▼  crew: direct agent / firstmate
+implement the task in the worktree
   │
   ▼  henkaten-council + trine-eval
 governance + evaluation gates
@@ -83,7 +84,9 @@ Key knobs:
 
 - `AUTOMATE_DRY_RUN` - when `true` (default), adapters echo commands instead of executing them.
 - `AUTOMATE_TREEHOUSE_BIN`, `AUTOMATE_NO_MISTAKES_BIN` - paths to those binaries (or your forks).
-- `AUTOMATE_FIRSTMATE_HOME` - firstmate's home directory (the checkout containing its `bin/` scripts).
+- `AUTOMATE_CREW_BACKEND` - `direct` (default: one agent in the worktree, anywhere) or `firstmate` (full crew, macOS/Linux only).
+- `AUTOMATE_AGENT_CMD` - agent harness for the `direct` crew backend (default `claude`).
+- `AUTOMATE_FIRSTMATE_HOME` - firstmate's home directory (used when `AUTOMATE_CREW_BACKEND=firstmate`).
 - `AUTOMATE_GOVERNANCE_CMD`, `AUTOMATE_CODEGEN_CMD` - commands for the henkaten-council and trine-eval gates; empty disables a gate.
 
 ## Development

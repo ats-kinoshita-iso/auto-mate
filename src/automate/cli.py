@@ -64,6 +64,7 @@ def status() -> None:
     settings = get_settings()
     console.print(f"[bold]auto-mate[/bold]  dry_run=[cyan]{settings.dry_run}[/cyan]")
     console.print(f"  treehouse    : {settings.treehouse_bin}")
+    console.print(f"  crew         : {settings.crew_backend} (agent={settings.agent_cmd})")
     console.print(f"  firstmate    : {settings.firstmate_home or '[dim]unset[/dim]'}")
     console.print(f"  no-mistakes  : {settings.no_mistakes_bin}")
     console.print(f"  governance   : {settings.governance_cmd or '[dim]disabled[/dim]'}")

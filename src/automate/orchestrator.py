@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from automate.adapters import FirstmateAdapter, NoMistakesAdapter, TreehouseAdapter
+from automate.adapters import (
+    DirectCrewAdapter,
+    FirstmateAdapter,
+    NoMistakesAdapter,
+    TreehouseAdapter,
+)
 from automate.config import Settings
 from automate.harnesses import CommandGate
 from automate.models import RunRecord, RunStatus, Task, Verdict
@@ -21,12 +26,12 @@ class Orchestrator:
         self,
         *,
         treehouse: WorktreeProvider,
-        firstmate: CrewRunner,
+        crew: CrewRunner,
         no_mistakes: ShipGate,
         gates: list[Gate],
     ) -> None:
         self._treehouse = treehouse
-        self._firstmate = firstmate
+        self._crew = crew
         self._no_mistakes = no_mistakes
         self._gates = gates
 
@@ -34,9 +39,14 @@ class Orchestrator:
     def from_settings(cls, settings: Settings) -> Orchestrator:
         """Build an orchestrator with the bundled adapters wired from config."""
         dry = settings.dry_run
+        crew: CrewRunner
+        if settings.crew_backend == "firstmate":
+            crew = FirstmateAdapter(home=settings.firstmate_home, dry_run=dry)
+        else:
+            crew = DirectCrewAdapter(agent_cmd=settings.agent_cmd, dry_run=dry)
         return cls(
             treehouse=TreehouseAdapter(settings.treehouse_bin, dry_run=dry),
-            firstmate=FirstmateAdapter(home=settings.firstmate_home, dry_run=dry),
+            crew=crew,
             no_mistakes=NoMistakesAdapter(settings.no_mistakes_bin, dry_run=dry),
             gates=[
                 CommandGate("henkaten-council", settings.governance_cmd, dry_run=dry),
@@ -63,7 +73,7 @@ class Orchestrator:
         record.worktree = worktree
         record.log.append(f"provisioned worktree at {worktree.path} on {worktree.branch}")
 
-        crew = self._firstmate.run(task, worktree)
+        crew = self._crew.run(task, worktree)
         record.crew = crew
         record.log.append(crew.summary)
 
