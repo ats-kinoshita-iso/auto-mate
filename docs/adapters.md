@@ -57,7 +57,11 @@ Work the agent leaves uncommitted is committed by the adapter (`automate/<task-i
   - The crew reports through `state/<id>.status`; the last line's verb is the signal (`done:`, `blocked:`, `paused`).
 - **Decision: drive the `bin/` scripts with `--mode local-only`.** In local-only mode the crew implements on a branch and stops - no push, no PR - so auto-mate's governance/eval gates and its no-mistakes stage keep sole shipping authority (firstmate's own no-mistakes delivery mode would ship before the gates run).
 - How the adapter drives it: ensure `projects/<repo-name>` exists (a local clone of `task.repo`), scaffold the brief, fill `{TASK}` with `task.prompt`, spawn with `--mode local-only --yolo off`, poll `state/<id>.status` until `done:` (bounded by `AUTOMATE_AGENT_TIMEOUT_S`; `blocked:` and timeout raise), then adopt the crew's result by fetching its worktree's branch into the task's `automate/<id>` branch.
-- Provisional / platform: firstmate is **macOS/Linux only** and needs tmux plus a detected harness. Brief scaffolding and the `{TASK}` fill are validated live; a full crew spawn + supervision round has not run yet, so this backend stays second to `direct` until that live run.
+- Home prerequisite: programmatic spawns have no first-mate agent context to detect a harness from, so the firstmate home needs `config/crew-harness` - a bare adapter-name file (e.g. `claude`) - or `fm-spawn.sh` refuses with "no launch template for harness 'unknown'" (observed live).
+- One-time environment consent (observed live): firstmate launches claude crews with `--dangerously-skip-permissions`, so the FIRST crew in a fresh environment stops at claude's interactive consent dialogs (folder trust, then bypass-permissions acknowledgment) inside its tmux pane.
+  Those acceptances are a human decision: attach once (`tmux attach -t firstmate`), accept, and subsequent crews run unattended.
+  An unattended first run otherwise ends at the adapter's supervision timeout with the worktree kept for autopsy.
+- Provisional / platform: firstmate is **macOS/Linux only** and needs tmux plus a configured harness. Validated live: brief scaffolding, `{TASK}` fill, project cloning, spawn (tmux window + crew worktree + `state/<id>.meta`), and the supervision timeout path. A full crew round to `done:` awaits the one-time consent above.
 
 ## Harness gates - `Gate`
 
