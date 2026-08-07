@@ -44,7 +44,8 @@ The crew stage is pluggable: any `CrewRunner` works, and the backend is chosen b
 Runs a single agent harness (`AUTOMATE_AGENT_CMD`, default `claude`) directly in the task's worktree with the prompt, then reports whether it left changes (dirty worktree or commits beyond the base ref).
 It needs only an agent on PATH, so auto-mate runs anywhere - which is why it is the default.
 
-For real (non-dry) runs the agent command must be headless and allowed to edit files - e.g. `claude -p --permission-mode acceptEdits` - because an interactive command blocks forever waiting for a TTY; `AUTOMATE_AGENT_TIMEOUT_S` bounds the run.
+For real (non-dry) runs the agent command must be headless and allowed to edit files - e.g. `claude -p --permission-mode acceptEdits --setting-sources project,local` - because an interactive command blocks forever waiting for a TTY; `AUTOMATE_AGENT_TIMEOUT_S` bounds the run.
+`--setting-sources project,local` keeps user-scope plugins out of crew runs: their hooks otherwise write runtime state (`.harness/`, `.council/`) into the crew worktree, and the commit-leftovers step would sweep it into the task's commit (the governance gate caught exactly this in live validation).
 Work the agent leaves uncommitted is committed by the adapter (`automate/<task-id>: <prompt title>`): the ship gate pushes the branch, and only commits travel.
 
 ### firstmate - [`FirstmateAdapter`](../src/automate/adapters/firstmate.py)
