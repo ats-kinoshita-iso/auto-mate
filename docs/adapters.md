@@ -67,9 +67,14 @@ Both governance and codegen/eval reuse one gate type, differing only by name and
 - `henkaten-council` via `AUTOMATE_GOVERNANCE_CMD` - governance / change-point review.
 - `trine-eval` via `AUTOMATE_CODEGEN_CMD` - contract and quality evaluation.
 
-The configured command is invoked as `<command> <task-id> <branch>`; a zero exit is a pass.
+The configured command is invoked as `<command> <task-id> <branch> <intent>` with the task's repository as working directory; a zero exit is a pass.
 A non-zero exit is the gate's fail signal and surfaces as a failed verdict (a `gated` run), never as an exception (a `failed` run); `AUTOMATE_GATE_TIMEOUT_S` bounds each gate.
 An empty command disables the gate (auto-pass), so the lifecycle runs standalone before the harnesses are connected.
+
+[`scripts/gates/`](../scripts/gates/) ships reference implementations: each runs a headless agent (`GATE_AGENT_CMD`, default `claude -p`) over the branch's diff vs `GATE_BASE_REF` (default `main`), judged against the task intent, and greps a final `VERDICT: PASS` / `VERDICT: FAIL - reason` line for the exit code.
+The diff is embedded in the prompt (capped by `GATE_DIFF_MAX`), so the gate agent needs no tool permissions.
+`governance.sh` reviews scope drift, unexpected surface, and destructive operations through the 4M change-point lens; `codegen.sh` adversarially evaluates completeness, correctness, and craft against the intent.
+The two prompts split responsibilities explicitly so the gates stay independent signals rather than two copies of one review.
 
 ## Adding or replacing a tool
 

@@ -230,24 +230,28 @@ def test_direct_crew_commits_leftover_work_so_it_can_ship() -> None:
     assert commit == ["git", "-C", "/wt", "commit", "-m", "automate/abc: add dark mode"]
 
 
+_CREW = CrewResult(task_id="abc", branch="automate/abc", changed=True)
+
+
 def test_command_gate_disabled_when_no_command() -> None:
     runner = RecordingRunner()
     gate = CommandGate("henkaten-council", "", runner=runner)
-    verdict = gate.evaluate(CrewResult(task_id="abc", branch="automate/abc", changed=True))
+    verdict = gate.evaluate(_TASK, _CREW)
     assert verdict.passed is True
     assert runner.calls == []  # disabled gate never shells out
 
 
-def test_command_gate_runs_configured_command() -> None:
+def test_command_gate_runs_in_repo_with_task_context() -> None:
     runner = RecordingRunner()
-    gate = CommandGate("trine-eval", "trine-eval run", runner=runner)
-    gate.evaluate(CrewResult(task_id="abc", branch="automate/abc", changed=True))
-    assert runner.calls == [["trine-eval", "run", "abc", "automate/abc"]]
+    gate = CommandGate("trine-eval", "bash gates/codegen.sh", runner=runner)
+    gate.evaluate(_TASK, _CREW)
+    assert runner.calls == [["bash", "gates/codegen.sh", "abc", "automate/abc", "add dark mode"]]
+    assert runner.cwds == ["/repo"]  # gate scripts run inside the task's repo
 
 
 def test_command_gate_failure_is_a_verdict_not_an_exception() -> None:
     runner = RecordingRunner(returncode=1)
     gate = CommandGate("trine-eval", "trine-eval run", runner=runner)
-    verdict = gate.evaluate(CrewResult(task_id="abc", branch="automate/abc", changed=True))
+    verdict = gate.evaluate(_TASK, _CREW)
     assert verdict.passed is False
     assert verdict.findings == ["gate reported failure"]

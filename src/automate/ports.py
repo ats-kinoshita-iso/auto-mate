@@ -28,9 +28,13 @@ class CrewRunner(Protocol):
 
 
 class Gate(Protocol):
-    """A governance or evaluation gate over a crew's output."""
+    """A governance or evaluation gate over a crew's output.
 
-    def evaluate(self, crew: CrewResult) -> Verdict: ...
+    Receives the task as well: gate commands run inside the task's repo and
+    judge the crew's branch against the task's intent.
+    """
+
+    def evaluate(self, task: Task, crew: CrewResult) -> Verdict: ...
 
 
 class ShipGate(Protocol):

@@ -102,7 +102,7 @@ class Orchestrator:
             self._release(worktree, record)
             return
 
-        record.verdicts = [gate.evaluate(crew) for gate in self._gates]
+        record.verdicts = [gate.evaluate(task, crew) for gate in self._gates]
         for verdict in record.verdicts:
             record.log.append(self._format_verdict(verdict))
 

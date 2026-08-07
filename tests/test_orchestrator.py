@@ -36,7 +36,7 @@ class FakeGate:
         self._name = name
         self._passed = passed
 
-    def evaluate(self, crew: CrewResult) -> Verdict:
+    def evaluate(self, task: Task, crew: CrewResult) -> Verdict:
         return Verdict(gate=self._name, passed=self._passed)
 
 
