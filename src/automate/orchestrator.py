@@ -41,7 +41,11 @@ class Orchestrator:
         dry = settings.dry_run
         crew: CrewRunner
         if settings.crew_backend == "firstmate":
-            crew = FirstmateAdapter(home=settings.firstmate_home, dry_run=dry)
+            crew = FirstmateAdapter(
+                home=settings.firstmate_home,
+                dry_run=dry,
+                crew_timeout=settings.agent_timeout_s,
+            )
         else:
             crew = DirectCrewAdapter(
                 agent_cmd=settings.agent_cmd,

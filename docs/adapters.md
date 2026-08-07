@@ -49,10 +49,14 @@ Work the agent leaves uncommitted is committed by the adapter (`automate/<task-i
 
 ### firstmate - [`FirstmateAdapter`](../src/automate/adapters/firstmate.py)
 
-- What it is: not a flag CLI and not a dispatch API. firstmate is a conversational supervisor - you *talk* to a first-mate agent (launch claude/codex/opencode/pi in the firstmate home) and its `AGENTS.md` runs a crew in tmux + treehouse worktrees. There is no `-p` flag; harnesses are launched by firstmate with the brief as a positional argument.
-- Programmatic surface: firstmate's `bin/` scripts - `bin/fm-brief.sh <id> <repo>` scaffolds a brief, `bin/fm-spawn.sh <id> projects/<repo>` spawns a crewmate, `bin/fm-watch.sh` supervises, and crew status lands in `state/<id>.status` / `data/<id>/report.md`.
-- **Decision: drive the `bin/` scripts (option B).** firstmate already supervises *and ships* (it has no-mistakes built into its delivery modes), so delegating the whole task to a first-mate agent (option A) would ship work before auto-mate's governance/eval gates could run - defeating auto-mate's purpose. So auto-mate stays the single supervisor and uses firstmate as a crew-execution library. Trade-off: this bypasses the first-mate agent's own intake/supervision judgment.
-- Provisional / platform: firstmate is **macOS/Linux only** and needs tmux + a detected harness, so this path cannot be validated on Windows. Writing `task.prompt` into the brief, mapping `task.repo` to a `projects/` entry, and supervising to completion remain `TODO`.
+- What it is: not a flag CLI and not a dispatch API. firstmate is a conversational supervisor - you *talk* to a first-mate agent (launch claude/codex/opencode/pi in the firstmate home) and its `AGENTS.md` runs a crew in tmux + treehouse worktrees.
+- Programmatic surface (contract read from source; brief scaffolding validated live 2026-08-06):
+  - `bin/fm-brief.sh <id> <repo-name> --mode <no-mistakes|direct-PR|local-only>` scaffolds `data/<id>/brief.md` with a literal `{TASK}` placeholder and a machine-readable `Delivery contract: mode=...` line; ship briefs require a mode.
+  - `bin/fm-spawn.sh <id> projects/<repo-name> --mode <mode> --yolo <on|off>` launches a crewmate in the session backend (tmux by default); the spawn provisions its **own** treehouse worktree inside the `projects/<repo-name>` clone and records it as `worktree=` in `state/<id>.meta`.
+  - The crew reports through `state/<id>.status`; the last line's verb is the signal (`done:`, `blocked:`, `paused`).
+- **Decision: drive the `bin/` scripts with `--mode local-only`.** In local-only mode the crew implements on a branch and stops - no push, no PR - so auto-mate's governance/eval gates and its no-mistakes stage keep sole shipping authority (firstmate's own no-mistakes delivery mode would ship before the gates run).
+- How the adapter drives it: ensure `projects/<repo-name>` exists (a local clone of `task.repo`), scaffold the brief, fill `{TASK}` with `task.prompt`, spawn with `--mode local-only --yolo off`, poll `state/<id>.status` until `done:` (bounded by `AUTOMATE_AGENT_TIMEOUT_S`; `blocked:` and timeout raise), then adopt the crew's result by fetching its worktree's branch into the task's `automate/<id>` branch.
+- Provisional / platform: firstmate is **macOS/Linux only** and needs tmux plus a detected harness. Brief scaffolding and the `{TASK}` fill are validated live; a full crew spawn + supervision round has not run yet, so this backend stays second to `direct` until that live run.
 
 ## Harness gates - `Gate`
 

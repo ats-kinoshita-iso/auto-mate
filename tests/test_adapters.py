@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from automate.adapters import (
@@ -10,7 +12,7 @@ from automate.adapters import (
     NoMistakesAdapter,
     TreehouseAdapter,
 )
-from automate.adapters.base import CommandResult, CommandRunner
+from automate.adapters.base import AdapterError, CommandResult, CommandRunner
 from automate.harnesses import CommandGate
 from automate.models import CrewResult, Task, Worktree
 
@@ -18,8 +20,8 @@ from automate.models import CrewResult, Task, Worktree
 class RecordingRunner(CommandRunner):
     """A CommandRunner that records commands and returns canned output."""
 
-    def __init__(self, *, stdout: str = "", returncode: int = 0) -> None:
-        super().__init__(dry_run=False)
+    def __init__(self, *, stdout: str = "", returncode: int = 0, dry_run: bool = False) -> None:
+        super().__init__(dry_run=dry_run)
         self.calls: list[list[str]] = []
         self.cwds: list[str | None] = []
         self.timeouts: list[float | None] = []
@@ -129,18 +131,77 @@ def test_firstmate_tolerates_missing_home_only_in_dry_run() -> None:
         live.run(task, worktree)
 
 
-def test_firstmate_drives_bin_scripts() -> None:
-    runner = RecordingRunner()
+def test_firstmate_dry_run_drives_the_real_brief_and_spawn_contract() -> None:
+    runner = RecordingRunner(dry_run=True)
     adapter = FirstmateAdapter(home="/fm", runner=runner)
     crew = adapter.run(
-        Task(id="abc", prompt="x", repo="myrepo"),
+        Task(id="abc", prompt="x", repo="/repos/myrepo"),
         Worktree(task_id="abc", path="/wt", branch="automate/abc"),
     )
     assert crew.changed is True
+    # Path rendering is platform-dependent; the adapter builds these the same way.
+    brief_script = str(Path("/fm") / "bin" / "fm-brief.sh")
+    spawn_script = str(Path("/fm") / "bin" / "fm-spawn.sh")
     assert runner.calls == [
-        ["bash", "/fm/bin/fm-brief.sh", "abc", "myrepo"],
-        ["bash", "/fm/bin/fm-spawn.sh", "abc", "projects/myrepo"],
+        ["bash", brief_script, "abc", "myrepo", "--mode", "local-only"],
+        ["bash", spawn_script, "abc", "projects/myrepo", "--mode", "local-only", "--yolo", "off"],
     ]
+
+
+def _firstmate_home(tmp_path: Path, *, status: str, meta: str | None = "worktree=/crew/wt") -> Path:
+    home = tmp_path / "fm"
+    (home / "data" / "abc").mkdir(parents=True)
+    (home / "data" / "abc" / "brief.md").write_text("## Task\n{TASK}\n", encoding="utf-8")
+    (home / "state").mkdir()
+    if status:
+        (home / "state" / "abc.status").write_text(status, encoding="utf-8")
+    if meta is not None:
+        (home / "state" / "abc.meta").write_text(meta + "\n", encoding="utf-8")
+    return home
+
+
+def test_firstmate_supervises_to_done_and_adopts_the_crew_branch(tmp_path: Path) -> None:
+    home = _firstmate_home(tmp_path, status="spawned\ndone: ready in branch crew/abc\n")
+    runner = RecordingRunner(stdout="crew/abc")
+    adapter = FirstmateAdapter(home=str(home), runner=runner)
+    crew = adapter.run(
+        Task(id="abc", prompt="add dark mode", repo="/repos/myrepo"),
+        Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+    )
+    assert crew.changed is True
+    assert "done: ready in branch" in crew.summary
+    brief = (home / "data" / "abc" / "brief.md").read_text(encoding="utf-8")
+    assert "{TASK}" not in brief and "add dark mode" in brief
+    assert ["git", "clone", "/repos/myrepo", str(home / "projects" / "myrepo")] in runner.calls
+    assert ["git", "-C", "/wt", "fetch", "/crew/wt", "crew/abc"] in runner.calls
+    assert ["git", "-C", "/wt", "switch", "-C", "automate/abc", "FETCH_HEAD"] in runner.calls
+
+
+def test_firstmate_blocked_crew_raises(tmp_path: Path) -> None:
+    home = _firstmate_home(tmp_path, status="blocked: needs a decision\n")
+    adapter = FirstmateAdapter(home=str(home), runner=RecordingRunner())
+    with pytest.raises(AdapterError, match="blocked"):
+        adapter.run(
+            Task(id="abc", prompt="x", repo="/repos/myrepo"),
+            Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+        )
+
+
+def test_firstmate_supervision_times_out(tmp_path: Path) -> None:
+    home = _firstmate_home(tmp_path, status="")  # crew never reports
+    ticks = iter(range(0, 100, 10))
+    adapter = FirstmateAdapter(
+        home=str(home),
+        runner=RecordingRunner(),
+        crew_timeout=25.0,
+        sleep=lambda _s: None,
+        clock=lambda: float(next(ticks)),
+    )
+    with pytest.raises(AdapterError, match="did not finish"):
+        adapter.run(
+            Task(id="abc", prompt="x", repo="/repos/myrepo"),
+            Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+        )
 
 
 def test_direct_crew_runs_agent_and_reports_no_changes() -> None:
