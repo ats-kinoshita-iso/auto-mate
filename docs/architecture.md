@@ -35,11 +35,12 @@ Any object with the right methods satisfies them - the bundled adapters, my fork
 
 1. Provision - `treehouse` creates an isolated worktree on branch `automate/<task-id>`.
 2. Crew - the configured crew backend (`direct` agent by default, or `firstmate`) runs the task in that worktree and reports a `CrewResult`.
-3. Short-circuit - if the crew produced no changes, release the worktree and finish as `no_changes`.
+3. Short-circuit - if the crew produced no changes, finish as `no_changes`.
 4. Gates - run every `Gate` (governance, then codegen/eval); collect a `Verdict` from each.
 5. Decide - if any gate fails, finish as `gated` without shipping.
-6. Ship - `no-mistakes` pushes the branch through its safe-push pipeline; finish as `shipped` (with a PR URL) or `gated` if the push is blocked.
+6. Ship - `no-mistakes` runs the branch through its safe-push pipeline (driven with the task's intent); finish as `shipped` (with a PR URL when the target is GitHub) or `gated` if the pipeline blocks.
 
+The pooled worktree is returned on every terminal state except `failed`: task branches live in the shared repo and survive the return, so nothing is lost, while a crashed run keeps its worktree for an autopsy.
 Any exception raised by a stage is caught at the `run()` boundary, recorded in the log, and surfaced as a `failed` status, so a run always yields an inspectable record.
 
 ## Wiring
@@ -50,7 +51,6 @@ Swapping in a fork is a config change (point a `*_bin` at the new binary), not a
 
 ## What this scaffold is not
 
-- It does not yet drive the real CLIs of `treehouse` / `firstmate` / `no-mistakes`.
-  The adapter command surfaces are provisional and gated behind `dry_run` (see [adapters.md](adapters.md)).
+- The `treehouse` and `no-mistakes` adapters drive the real CLIs and are validated live on Linux; the `firstmate` surface is still provisional and gated behind `dry_run` (see [adapters.md](adapters.md)).
 - It ships no orchestration features beyond the lifecycle skeleton.
   Following the project's eval-first convention, each real feature lands with its own eval.
