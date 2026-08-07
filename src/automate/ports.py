@@ -34,6 +34,11 @@ class Gate(Protocol):
 
 
 class ShipGate(Protocol):
-    """The safe-push gate that ships work (implemented by no-mistakes)."""
+    """The safe-push gate that ships work (implemented by no-mistakes).
 
-    def gate(self, worktree: Worktree) -> GateResult: ...
+    Receives the task as well as the worktree: the pipeline wants the task's
+    intent (the goal behind the change), and gate initialization is anchored to
+    the task's repository.
+    """
+
+    def gate(self, task: Task, worktree: Worktree) -> GateResult: ...

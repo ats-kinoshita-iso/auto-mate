@@ -10,7 +10,7 @@ from automate.adapters import (
 )
 from automate.config import Settings
 from automate.harnesses import CommandGate
-from automate.models import RunRecord, RunStatus, Task, Verdict
+from automate.models import RunRecord, RunStatus, Task, Verdict, Worktree
 from automate.ports import CrewRunner, Gate, ShipGate, WorktreeProvider
 
 
@@ -43,14 +43,30 @@ class Orchestrator:
         if settings.crew_backend == "firstmate":
             crew = FirstmateAdapter(home=settings.firstmate_home, dry_run=dry)
         else:
-            crew = DirectCrewAdapter(agent_cmd=settings.agent_cmd, dry_run=dry)
+            crew = DirectCrewAdapter(
+                agent_cmd=settings.agent_cmd,
+                dry_run=dry,
+                agent_timeout=settings.agent_timeout_s,
+            )
         return cls(
             treehouse=TreehouseAdapter(settings.treehouse_bin, dry_run=dry),
             crew=crew,
-            no_mistakes=NoMistakesAdapter(settings.no_mistakes_bin, dry_run=dry),
+            no_mistakes=NoMistakesAdapter(
+                settings.no_mistakes_bin, dry_run=dry, timeout=settings.ship_timeout_s
+            ),
             gates=[
-                CommandGate("henkaten-council", settings.governance_cmd, dry_run=dry),
-                CommandGate("trine-eval", settings.codegen_cmd, dry_run=dry),
+                CommandGate(
+                    "henkaten-council",
+                    settings.governance_cmd,
+                    dry_run=dry,
+                    timeout=settings.gate_timeout_s,
+                ),
+                CommandGate(
+                    "trine-eval",
+                    settings.codegen_cmd,
+                    dry_run=dry,
+                    timeout=settings.gate_timeout_s,
+                ),
             ],
         )
 
@@ -79,8 +95,7 @@ class Orchestrator:
 
         if not crew.changed:
             record.status = RunStatus.NO_CHANGES
-            record.log.append("crew produced no changes; releasing worktree")
-            self._treehouse.release(worktree)
+            self._release(worktree, record)
             return
 
         record.verdicts = [gate.evaluate(crew) for gate in self._gates]
@@ -90,9 +105,10 @@ class Orchestrator:
         if not all(v.passed for v in record.verdicts):
             record.status = RunStatus.GATED
             record.log.append("one or more gates failed; not shipping")
+            self._release(worktree, record)
             return
 
-        ship = self._no_mistakes.gate(worktree)
+        ship = self._no_mistakes.gate(task, worktree)
         record.gate = ship
         if ship.pushed:
             record.status = RunStatus.SHIPPED
@@ -100,6 +116,23 @@ class Orchestrator:
         else:
             record.status = RunStatus.GATED
             record.log.append("no-mistakes gate blocked the push")
+        self._release(worktree, record)
+
+    def _release(self, worktree: Worktree, record: RunRecord) -> None:
+        """Return the pooled worktree on every terminal state except FAILED.
+
+        The task branch lives in the shared repo and survives the return
+        (validated against treehouse), so releasing loses nothing - the record
+        keeps the branch name for inspection. A release failure is logged rather
+        than raised so it cannot overwrite the run's real outcome. Crashed
+        (FAILED) runs skip release in ``run()``'s handler by never reaching here,
+        keeping the worktree for an autopsy.
+        """
+        try:
+            self._treehouse.release(worktree)
+            record.log.append(f"worktree returned to pool (branch {worktree.branch} kept)")
+        except Exception as exc:  # boundary: release must not mask the run outcome
+            record.log.append(f"worktree release failed (lease left open): {exc}")
 
     @staticmethod
     def _format_verdict(verdict: Verdict) -> str:

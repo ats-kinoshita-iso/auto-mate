@@ -23,20 +23,31 @@ class CommandGate:
         *,
         dry_run: bool = True,
         runner: CommandRunner | None = None,
+        timeout: float | None = None,
     ) -> None:
         self._gate = gate
         self._command = command
         self._runner = runner or CommandRunner(dry_run=dry_run)
+        self._timeout = timeout
 
     @property
     def name(self) -> str:
         return self._gate
 
     def evaluate(self, crew: CrewResult) -> Verdict:
-        """Run the gate over ``crew``'s output, returning a pass/fail verdict."""
+        """Run the gate over ``crew``'s output, returning a pass/fail verdict.
+
+        The command is run with ``check=False``: a non-zero exit is this gate's
+        "fail" signal and must surface as a failed verdict (a GATED run), not as
+        an exception (a FAILED run).
+        """
         if not self._command:
             return Verdict(gate=self._gate, passed=True, findings=["gate disabled"])
-        result = self._runner.run([*shlex.split(self._command), crew.task_id, crew.branch])
+        result = self._runner.run(
+            [*shlex.split(self._command), crew.task_id, crew.branch],
+            check=False,
+            timeout=self._timeout,
+        )
         if result.ok:
             return Verdict(gate=self._gate, passed=True)
         return Verdict(

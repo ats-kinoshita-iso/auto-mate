@@ -40,8 +40,21 @@ class CommandRunner:
     def dry_run(self) -> bool:
         return self._dry_run
 
-    def run(self, command: list[str], *, cwd: str | None = None) -> CommandResult:
-        """Execute ``command``; under dry-run, return a synthetic success instead."""
+    def run(
+        self,
+        command: list[str],
+        *,
+        cwd: str | None = None,
+        check: bool = True,
+        timeout: float | None = None,
+    ) -> CommandResult:
+        """Execute ``command``; under dry-run, return a synthetic success instead.
+
+        With ``check=False`` a non-zero exit is returned to the caller instead of
+        raised, so gates can turn failures into verdicts. A ``timeout`` (seconds)
+        bounds long-running externals such as agent harnesses; expiry raises
+        :class:`AdapterError`.
+        """
         if self._dry_run:
             return CommandResult(
                 command=command,
@@ -49,20 +62,26 @@ class CommandRunner:
                 stdout=f"[dry-run] {shlex.join(command)}",
                 stderr="",
             )
-        completed = subprocess.run(
-            command,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AdapterError(
+                f"command timed out after {timeout}s: {shlex.join(command)}"
+            ) from exc
         result = CommandResult(
             command=command,
             returncode=completed.returncode,
             stdout=completed.stdout,
             stderr=completed.stderr,
         )
-        if not result.ok:
+        if check and not result.ok:
             raise AdapterError(
                 f"command failed ({result.returncode}): {shlex.join(command)}\n{result.stderr}"
             )

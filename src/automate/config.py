@@ -49,6 +49,17 @@ class Settings(BaseSettings):
         "", description="Command invoked as the trine-eval codegen/evaluation gate."
     )
 
+    # Timeouts (seconds) for long-running externals.
+    agent_timeout_s: float = Field(
+        3600.0, description="Upper bound for one direct-backend agent run."
+    )
+    ship_timeout_s: float = Field(
+        3600.0, description="Upper bound for one no-mistakes pipeline run (axi run blocks)."
+    )
+    gate_timeout_s: float = Field(
+        1800.0, description="Upper bound for one governance/eval gate command."
+    )
+
     # Safety.
     dry_run: bool = Field(
         True, description="When true, adapters echo commands instead of executing them."

@@ -5,11 +5,20 @@ operates on the repository in the current working directory (there is no ``--rep
 flag), and pooled worktrees come back on a detached HEAD - so this adapter cuts the
 task's working branch in the acquired worktree itself.
 
-CLI surface confirmed from source (kunchenguid/treehouse):
+CLI surface confirmed from source (kunchenguid/treehouse) and validated live against
+treehouse v2.1.1 on Linux (2026-08-06):
 - ``treehouse get --lease [--lease-holder LABEL]`` acquires a worktree and prints
-  ONLY its absolute path to stdout (cmd/get.go); the lease persists until return.
-- ``treehouse return <path> [--force]`` releases a worktree (cmd/return_cmd.go).
-- ``treehouse status`` prints a human-readable pool table (cmd/status.go).
+  ONLY its absolute path to stdout (human chatter goes to stderr); the lease
+  persists until return. No ``treehouse init`` is required first, and a fresh get
+  tracks the repo's current default-branch head.
+- Pooled worktrees are *linked* git worktrees (``.git`` file -> the repo's
+  ``.git/worktrees/...``), so remotes, refs, and config are shared with the repo:
+  branches cut here survive release, and remotes added in the repo (e.g. the
+  ``no-mistakes`` gate remote) are usable from the worktree.
+- ``treehouse return <path> --force [--if-lease-holder H]`` cleans, resets, and
+  returns a worktree without prompting; the holder guard prevents releasing a
+  lease this task does not own.
+- ``treehouse status`` prints a human-readable pool table (no JSON mode).
 """
 
 from __future__ import annotations
@@ -39,12 +48,22 @@ class TreehouseAdapter:
         path = self._acquired_path(result.stdout, task)
         branch = f"automate/{task.id}"
         # treehouse returns a worktree on a detached HEAD; create the task branch in it.
-        self._runner.run(["git", "-C", path, "switch", "-c", branch])
+        # -C (not -c): a re-run of the same task id resets its branch instead of failing.
+        self._runner.run(["git", "-C", path, "switch", "-C", branch])
         return Worktree(task_id=task.id, path=path, branch=branch)
 
     def release(self, worktree: Worktree) -> None:
-        """Return a leased worktree to the pool."""
-        self._runner.run([self._binary, "return", worktree.path, "--force"])
+        """Return a leased worktree to the pool (only if this task still holds it)."""
+        self._runner.run(
+            [
+                self._binary,
+                "return",
+                worktree.path,
+                "--force",
+                "--if-lease-holder",
+                worktree.task_id,
+            ]
+        )
 
     def status(self, repo: str) -> str:
         """Return treehouse's pool status table for ``repo`` (human-readable)."""
