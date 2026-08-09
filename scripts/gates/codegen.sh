@@ -23,7 +23,10 @@ agent_cmd="${GATE_AGENT_CMD:-claude -p}"
 base_ref="${4:-${GATE_BASE_REF:-main}}"
 diff_max="${GATE_DIFF_MAX:-60000}"
 
-diff="$(git diff "${base_ref}...${branch}" | head -c "$diff_max")"
+# Truncate in the shell, not via `| head -c`: head closing the pipe early gives
+# git SIGPIPE (exit 141), which pipefail turns into a silent gate failure.
+diff="$(git diff "${base_ref}...${branch}")"
+diff="${diff:0:$diff_max}"
 if [ -z "$diff" ]; then
   echo "codegen gate: empty diff for ${branch} vs ${base_ref}" >&2
   exit 1

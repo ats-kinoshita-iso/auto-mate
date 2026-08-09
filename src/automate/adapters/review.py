@@ -54,8 +54,10 @@ class AgentReviewAdapter:
     def review(self, task: Task, worktree: Worktree) -> str:
         """Review the checked-out PR head in ``worktree``; return the markdown body."""
         prompt = _PROMPT.format(base_ref=task.base_ref, intent=task.prompt)
+        # "--" ends option parsing: variadic flags (e.g. claude's --allowedTools)
+        # would otherwise swallow the prompt as more flag values.
         result = self._runner.run(
-            [*shlex.split(self._agent_cmd), prompt],
+            [*shlex.split(self._agent_cmd), "--", prompt],
             cwd=worktree.path,
             timeout=self._timeout,
         )

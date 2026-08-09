@@ -120,7 +120,8 @@ def test_review_agent_runs_in_worktree_with_intent_and_base() -> None:
     adapter = AgentReviewAdapter(agent_cmd="claude -p --flag", runner=runner, timeout=1800.0)
     body = adapter.review(_TASK, _WORKTREE)
     assert body == "## Review\nLooks solid."
-    assert runner.calls[0][:3] == ["claude", "-p", "--flag"]
+    # "--" shields the prompt from variadic flags like claude's --allowedTools.
+    assert runner.calls[0][:4] == ["claude", "-p", "--flag", "--"]
     prompt = runner.calls[0][-1]
     assert "intent" in prompt and "origin/ws/copy-voice" in prompt
     assert runner.cwds == ["/wt"]

@@ -211,7 +211,7 @@ def test_direct_crew_runs_agent_and_reports_no_changes() -> None:
         Task(id="abc", prompt="add dark mode", repo="/repo"),
         Worktree(task_id="abc", path="/wt", branch="automate/abc"),
     )
-    assert runner.calls[0] == ["claude", "--print", "add dark mode"]
+    assert runner.calls[0] == ["claude", "--print", "--", "add dark mode"]
     assert runner.timeouts[0] == 900.0
     assert crew.changed is False
     assert ["git", "-C", "/wt", "add", "-A"] not in runner.calls  # clean -> no commit

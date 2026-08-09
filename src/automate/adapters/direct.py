@@ -38,8 +38,10 @@ class DirectCrewAdapter:
 
     def run(self, task: Task, worktree: Worktree) -> CrewResult:
         """Launch the agent in the worktree and report whether it produced changes."""
+        # "--" ends option parsing: variadic flags (e.g. claude's --allowedTools)
+        # would otherwise swallow the prompt as more flag values.
         self._runner.run(
-            [*shlex.split(self._agent_cmd), task.prompt],
+            [*shlex.split(self._agent_cmd), "--", task.prompt],
             cwd=worktree.path,
             timeout=self._agent_timeout,
         )
