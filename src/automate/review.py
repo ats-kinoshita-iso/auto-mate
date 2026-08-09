@@ -84,9 +84,20 @@ class ReviewOrchestrator:
         return record
 
     def review_open(self, repo: str, *, post: bool = False) -> list[ReviewRecord]:
-        """Review every open PR of ``repo`` sequentially."""
-        clone = self._host.ensure_clone(repo)
-        prs = self._host.list_open(clone)
+        """Review every open PR of ``repo`` sequentially.
+
+        The clone/list phase honors the same record-not-raise boundary as
+        ``review_pr``: an unreachable host yields one FAILED record instead of
+        an uncaught traceback.
+        """
+        try:
+            clone = self._host.ensure_clone(repo)
+            prs = self._host.list_open(clone)
+        except Exception as exc:  # boundary: surface failures in a record
+            placeholder = PullRequest(number=0, title="(open PRs unavailable)", base_ref="main")
+            record = ReviewRecord(pr=placeholder, status=ReviewStatus.FAILED)
+            record.log.append(f"listing open PRs failed: {exc}")
+            return [record]
         # Pass the resolved clone path so each review skips re-resolution.
         return [self.review_pr(clone, pr.number, post=post) for pr in prs]
 

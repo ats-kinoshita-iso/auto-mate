@@ -59,18 +59,24 @@ def test_gh_ensure_clone_skips_existing_dir(tmp_path: Path) -> None:
     assert runner.calls == []  # no clone command for a local path
 
 
-def test_gh_ensure_clone_clones_a_slug_into_clone_root(tmp_path: Path) -> None:
+def test_gh_ensure_clone_keys_clones_by_full_slug(tmp_path: Path) -> None:
+    # Same-named repos of different owners must never share a clone directory.
     runner = RecordingRunner()
     root = tmp_path / "repos"
     adapter = GhAdapter(clone_root=str(root), runner=runner)
-    clone = adapter.ensure_clone("me/kaala-vidya")
-    assert clone == str(root / "kaala-vidya")
-    assert runner.calls == [["gh", "repo", "clone", "me/kaala-vidya", str(root / "kaala-vidya")]]
+    assert adapter.ensure_clone("alice/tools") == str(root / "alice" / "tools")
+    assert adapter.ensure_clone("bob/tools") == str(root / "bob" / "tools")
+    assert runner.calls == [
+        ["gh", "repo", "clone", "alice/tools", str(root / "alice" / "tools")],
+        ["gh", "repo", "clone", "bob/tools", str(root / "bob" / "tools")],
+    ]
 
 
-def test_gh_fetch_pr_uses_the_automate_ref_namespace() -> None:
+def test_gh_fetch_pr_fetches_head_and_the_prs_own_base() -> None:
+    # An explicit refspec suppresses opportunistic remote-tracking updates, so
+    # the base must be fetched explicitly or stacked-PR diffs go stale.
     runner = RecordingRunner()
-    adapter = GhAdapter(clone_root="/tmp/repos", runner=runner)
+    adapter = GhAdapter(clone_root="/tmp/repos", runner=runner, timeout=321.0)
     pr = PullRequest(number=10, title="t", base_ref="ws/copy-voice")
     ref = adapter.fetch_pr("/clone", pr)
     assert ref == "refs/automate/pr/10"
@@ -81,10 +87,11 @@ def test_gh_fetch_pr_uses_the_automate_ref_namespace() -> None:
             "/clone",
             "fetch",
             "origin",
-            "--prune",
             "+refs/pull/10/head:refs/automate/pr/10",
+            "+refs/heads/ws/copy-voice:refs/remotes/origin/ws/copy-voice",
         ]
     ]
+    assert runner.timeouts == [321.0]  # the fetch is bounded like every other call
 
 
 def test_gh_checkout_resets_worktree_to_ref() -> None:
@@ -270,6 +277,24 @@ def test_review_open_reviews_every_open_pr(tmp_path: Path) -> None:
     records = orchestrator.review_open("me/repo")
     assert [record.pr.number for record in records] == [10, 8]
     assert all(record.status is ReviewStatus.REVIEWED for record in records)
+
+
+def test_review_open_yields_a_failed_record_when_listing_crashes(tmp_path: Path) -> None:
+    class DownHost(FakeHost):
+        def list_open(self, clone: str) -> list[PullRequest]:
+            raise RuntimeError("gh not authenticated")
+
+    orchestrator = ReviewOrchestrator(
+        host=DownHost(),
+        treehouse=FakeTreehouse(),
+        reviewer=FakeReviewer(),
+        gates=[],
+        reports_dir=str(tmp_path / "reviews"),
+    )
+    records = orchestrator.review_open("me/repo")
+    assert len(records) == 1
+    assert records[0].status is ReviewStatus.FAILED
+    assert any("gh not authenticated" in line for line in records[0].log)
 
 
 def test_review_from_settings_wires_bundled_adapters() -> None:

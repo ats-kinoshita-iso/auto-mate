@@ -161,15 +161,24 @@ def _firstmate_home(tmp_path: Path, *, status: str, meta: str | None = "worktree
 
 
 def test_firstmate_supervises_to_done_and_adopts_the_crew_branch(tmp_path: Path) -> None:
-    home = _firstmate_home(tmp_path, status="spawned\ndone: ready in branch crew/abc\n")
+    # Stale state from a previous run is pre-created; the adapter must clear it,
+    # then adopt only what "the crew" (our sleep hook) writes after the spawn.
+    home = _firstmate_home(tmp_path, status="done: STALE previous-run line\n")
+
+    def crew_reports(_seconds: float) -> None:
+        (home / "state" / "abc.status").write_text(
+            "spawned\ndone: ready in branch crew/abc\n", encoding="utf-8"
+        )
+        (home / "state" / "abc.meta").write_text("worktree=/crew/wt\n", encoding="utf-8")
+
     runner = RecordingRunner(stdout="crew/abc")
-    adapter = FirstmateAdapter(home=str(home), runner=runner)
+    adapter = FirstmateAdapter(home=str(home), runner=runner, sleep=crew_reports)
     crew = adapter.run(
         Task(id="abc", prompt="add dark mode", repo="/repos/myrepo"),
         Worktree(task_id="abc", path="/wt", branch="automate/abc"),
     )
     assert crew.changed is True
-    assert "done: ready in branch" in crew.summary
+    assert "done: ready in branch" in crew.summary  # the fresh line, not the stale one
     brief = (home / "data" / "abc" / "brief.md").read_text(encoding="utf-8")
     assert "{TASK}" not in brief and "add dark mode" in brief
     assert ["git", "clone", "/repos/myrepo", str(home / "projects" / "myrepo")] in runner.calls
@@ -177,9 +186,34 @@ def test_firstmate_supervises_to_done_and_adopts_the_crew_branch(tmp_path: Path)
     assert ["git", "-C", "/wt", "switch", "-C", "automate/abc", "FETCH_HEAD"] in runner.calls
 
 
+def test_firstmate_refreshes_an_existing_project_clone(tmp_path: Path) -> None:
+    # A frozen clone would have every later crew implement against a stale base.
+    home = _firstmate_home(tmp_path, status="")
+    clone = home / "projects" / "myrepo"
+    clone.mkdir(parents=True)
+
+    def crew_reports(_seconds: float) -> None:
+        (home / "state" / "abc.status").write_text("done: ready\n", encoding="utf-8")
+        (home / "state" / "abc.meta").write_text("worktree=/crew/wt\n", encoding="utf-8")
+
+    runner = RecordingRunner(stdout="crew/abc")
+    adapter = FirstmateAdapter(home=str(home), runner=runner, sleep=crew_reports)
+    adapter.run(
+        Task(id="abc", prompt="x", repo="/repos/myrepo"),
+        Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+    )
+    assert ["git", "-C", str(clone), "fetch", "origin", "--prune"] in runner.calls
+    assert ["git", "-C", str(clone), "pull", "--ff-only"] in runner.calls
+    assert not any(call[:2] == ["git", "clone"] for call in runner.calls)
+
+
 def test_firstmate_blocked_crew_raises(tmp_path: Path) -> None:
-    home = _firstmate_home(tmp_path, status="blocked: needs a decision\n")
-    adapter = FirstmateAdapter(home=str(home), runner=RecordingRunner())
+    home = _firstmate_home(tmp_path, status="")
+
+    def crew_blocks(_seconds: float) -> None:
+        (home / "state" / "abc.status").write_text("blocked: needs a decision\n", encoding="utf-8")
+
+    adapter = FirstmateAdapter(home=str(home), runner=RecordingRunner(), sleep=crew_blocks)
     with pytest.raises(AdapterError, match="blocked"):
         adapter.run(
             Task(id="abc", prompt="x", repo="/repos/myrepo"),
@@ -228,6 +262,17 @@ def test_direct_crew_commits_leftover_work_so_it_can_ship() -> None:
     assert ["git", "-C", "/wt", "add", "-A"] in runner.calls
     commit = next(c for c in runner.calls if "commit" in c)
     assert commit == ["git", "-C", "/wt", "commit", "-m", "automate/abc: add dark mode"]
+
+
+def test_direct_crew_commit_title_survives_an_empty_prompt() -> None:
+    runner = RecordingRunner(stdout="M src/app.py")
+    adapter = DirectCrewAdapter(runner=runner)
+    adapter.run(
+        Task(id="abc", prompt="", repo="/repo"),
+        Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+    )
+    commit = next(c for c in runner.calls if "commit" in c)
+    assert commit == ["git", "-C", "/wt", "commit", "-m", "automate/abc: task abc"]
 
 
 _CREW = CrewResult(task_id="abc", branch="automate/abc", changed=True)

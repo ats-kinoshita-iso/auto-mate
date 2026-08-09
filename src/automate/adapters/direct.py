@@ -59,7 +59,7 @@ class DirectCrewAdapter:
             return
         if not self._dirty(worktree):
             return
-        title = task.prompt.splitlines()[0][:60]
+        title = (task.prompt.splitlines() or [f"task {task.id}"])[0][:60]
         self._runner.run(["git", "-C", worktree.path, "add", "-A"])
         self._runner.run(
             ["git", "-C", worktree.path, "commit", "-m", f"automate/{task.id}: {title}"]

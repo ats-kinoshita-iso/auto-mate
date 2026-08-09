@@ -44,12 +44,17 @@ class GhAdapter:
         self._timeout = timeout
 
     def ensure_clone(self, repo: str) -> str:
-        """Resolve ``repo`` (local path or owner/name slug) to a local clone."""
+        """Resolve ``repo`` (local path or owner/name slug) to a local clone.
+
+        Slug clones are keyed by the FULL slug (``<root>/<owner>/<name>``) so
+        same-named repos of different owners never collide into one directory -
+        a collision would silently review (and post to) the wrong repository.
+        """
         if Path(repo).expanduser().is_dir():
             return str(Path(repo).expanduser())
         if "/" not in repo:
             raise ValueError(f"repo must be a local path or an owner/name slug, got {repo!r}")
-        target = self._clone_root / repo.split("/")[-1]
+        target = self._clone_root.joinpath(*repo.split("/"))
         if not target.is_dir() or self._runner.dry_run:
             self._runner.run([self._gh, "repo", "clone", repo, str(target)], timeout=self._timeout)
         return str(target)
@@ -79,12 +84,23 @@ class GhAdapter:
     def fetch_pr(self, clone: str, pr: PullRequest) -> str:
         """Fetch the PR head into ``refs/automate/pr/<N>``; return that ref.
 
-        ``--prune`` refreshes ``origin/*`` too, so a stacked PR's base branch is
-        current for the gate diff.
+        The PR's base branch is fetched in the same call: an explicit refspec
+        suppresses git's opportunistic remote-tracking updates, so without it
+        ``origin/<base>`` would stay frozen at clone time (or be absent for a
+        base created later) and the gates would diff against a stale base.
         """
         ref = f"refs/automate/pr/{pr.number}"
         self._runner.run(
-            ["git", "-C", clone, "fetch", "origin", "--prune", f"+refs/pull/{pr.number}/head:{ref}"]
+            [
+                "git",
+                "-C",
+                clone,
+                "fetch",
+                "origin",
+                f"+refs/pull/{pr.number}/head:{ref}",
+                f"+refs/heads/{pr.base_ref}:refs/remotes/origin/{pr.base_ref}",
+            ],
+            timeout=self._timeout,
         )
         return ref
 

@@ -73,6 +73,7 @@ class FirstmateAdapter:
             cwd=self._home or None,
         )
         self._fill_brief(home, task)
+        self._clear_stale_state(home, task)
         self._runner.run(
             [
                 "bash",
@@ -105,10 +106,32 @@ class FirstmateAdapter:
         )
 
     def _ensure_project_clone(self, home: Path, repo_name: str, repo: str) -> None:
-        """firstmate crews work in a local clone under ``projects/``; create it once."""
-        if self._runner.dry_run or (home / "projects" / repo_name).exists():
+        """firstmate crews work in a local clone under ``projects/``; keep it fresh.
+
+        An existing clone is fetched and fast-forwarded rather than reused as-is:
+        a frozen clone would have every later crew implement against the base as
+        it stood when the clone was first created.
+        """
+        if self._runner.dry_run:
             return
-        self._runner.run(["git", "clone", repo, str(home / "projects" / repo_name)], cwd=self._home)
+        clone = home / "projects" / repo_name
+        if not clone.exists():
+            self._runner.run(["git", "clone", repo, str(clone)], cwd=self._home)
+            return
+        self._runner.run(["git", "-C", str(clone), "fetch", "origin", "--prune"])
+        self._runner.run(["git", "-C", str(clone), "pull", "--ff-only"])
+
+    def _clear_stale_state(self, home: Path, task: Task) -> None:
+        """Drop a previous run's status/meta so it cannot be adopted as this run's.
+
+        ``fm-spawn.sh`` launches the crew asynchronously; a leftover terminal
+        ``done:`` line from an earlier run of the same task id would otherwise
+        satisfy the first supervision poll and ship the OLD crew's branch.
+        """
+        if self._runner.dry_run:
+            return
+        (home / "state" / f"{task.id}.status").unlink(missing_ok=True)
+        (home / "state" / f"{task.id}.meta").unlink(missing_ok=True)
 
     def _fill_brief(self, home: Path, task: Task) -> None:
         """Replace the scaffolded brief's ``{TASK}`` placeholder with the prompt."""
