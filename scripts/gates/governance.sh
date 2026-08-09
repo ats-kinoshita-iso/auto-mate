@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # henkaten-council governance gate for auto-mate.
 #
-# Invoked by auto-mate's CommandGate as:  governance.sh <task-id> <branch> <intent>
+# Invoked by auto-mate's CommandGate as:
+#   governance.sh <task-id> <branch> <intent> [<base-ref>]
 # with the task's repository as the working directory. Exit 0 = pass; any other
 # exit fails the gate and the last stderr text becomes the verdict's findings.
 #
@@ -15,11 +16,11 @@
 #   GATE_DIFF_MAX   max diff bytes embedded     (default: 60000)
 set -euo pipefail
 
-task_id="${1:?usage: governance.sh <task-id> <branch> <intent>}"
+task_id="${1:?usage: governance.sh <task-id> <branch> <intent> [<base-ref>]}"
 branch="${2:?missing branch}"
 intent="${3:-"(no intent recorded)"}"
 agent_cmd="${GATE_AGENT_CMD:-claude -p}"
-base_ref="${GATE_BASE_REF:-main}"
+base_ref="${4:-${GATE_BASE_REF:-main}}"
 diff_max="${GATE_DIFF_MAX:-60000}"
 
 diff="$(git diff "${base_ref}...${branch}" | head -c "$diff_max")"

@@ -81,6 +81,16 @@ The diff is embedded in the prompt (capped by `GATE_DIFF_MAX`), so the gate agen
 `governance.sh` reviews scope drift, unexpected surface, and destructive operations through the 4M change-point lens; `codegen.sh` adversarially evaluates completeness, correctness, and craft against the intent.
 The two prompts split responsibilities explicitly so the gates stay independent signals rather than two copies of one review.
 
+## PR review - `PullRequestHost` + `Reviewer`
+
+[`GhAdapter`](../src/automate/adapters/gh.py) and [`AgentReviewAdapter`](../src/automate/adapters/review.py) back `automate review` (see [architecture.md](architecture.md#the-review-lifecycle)).
+
+- `GhAdapter` drives the `gh` CLI with the local clone as cwd (repo inferred from origin; private repos work through the user's authenticated gh).
+  PR heads land in `refs/automate/pr/<N>` - a never-checked-out namespace, so forced updates cannot collide with worktree branches - and `--prune` keeps stacked bases fresh.
+  Posting uses `gh pr comment`, not `gh pr review`: GitHub rejects formal review events on self-authored PRs, and a comment is the honest shape for an automated report.
+- `AgentReviewAdapter` runs `AUTOMATE_REVIEW_AGENT_CMD` in the PR checkout.
+  Read-only-ness is enforced by that command's tool allowlist (default: Read/Glob/Grep plus `git diff/log/show`), and `--setting-sources project,local` keeps user-scope plugin hooks out of the checkout - the same crew-isolation lesson as the direct backend.
+
 ## Adding or replacing a tool
 
 1. Implement the relevant port from [`ports.py`](../src/automate/ports.py) (a plain class with the right methods - no base class required).

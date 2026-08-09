@@ -28,6 +28,8 @@ Any object with the right methods satisfies them - the bundled adapters, my fork
 | `CrewRunner` | `run` | `DirectCrewAdapter` (default), `FirstmateAdapter` |
 | `Gate` | `evaluate` | `CommandGate` (henkaten-council, trine-eval) |
 | `ShipGate` | `gate` | `NoMistakesAdapter` |
+| `PullRequestHost` | `ensure_clone`, `list_open`, `view`, `fetch_pr`, `checkout`, `comment` | `GhAdapter` |
+| `Reviewer` | `review` | `AgentReviewAdapter` |
 
 ## The lifecycle
 
@@ -42,6 +44,18 @@ Any object with the right methods satisfies them - the bundled adapters, my fork
 
 The pooled worktree is returned on every terminal state except `failed`: task branches live in the shared repo and survive the return, so nothing is lost, while a crashed run keeps its worktree for an autopsy.
 Any exception raised by a stage is caught at the `run()` boundary, recorded in the log, and surfaced as a `failed` status, so a run always yields an inspectable record.
+
+## The review lifecycle
+
+[`ReviewOrchestrator.review_pr`](../src/automate/review.py) is a parallel lifecycle that reviews pull requests instead of implementing tasks (`automate review`):
+
+1. Resolve - `gh` clones the repo under `AUTOMATE_REVIEW_CLONE_ROOT` (or reuses a local path) and fetches the PR head into `refs/automate/pr/<N>`.
+2. Gates - the same two `CommandGate`s judge the PR's diff against the PR's **own** base branch (stacked PRs never diff against main), with the PR title/body as intent.
+3. Deep review - a read-only agent (`Reviewer` port) explores a treehouse checkout of the PR head and writes a substantive markdown review, so depth is not bound by the gates' embedded-diff cap.
+4. Report - verdicts + review compose into one markdown report, saved under `<workspace_root>/reviews/`; with `--post` it is also posted to the PR as a comment.
+
+Gate failures are review *content* (they appear in the report), not review failures; a `ReviewRecord` ends `failed` only on crashes.
+Review worktrees are released on every outcome - the PR head lives in the clone's refs, so there is nothing to autopsy.
 
 ## Wiring
 

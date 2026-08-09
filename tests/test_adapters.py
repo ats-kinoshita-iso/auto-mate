@@ -245,8 +245,19 @@ def test_command_gate_runs_in_repo_with_task_context() -> None:
     runner = RecordingRunner()
     gate = CommandGate("trine-eval", "bash gates/codegen.sh", runner=runner)
     gate.evaluate(_TASK, _CREW)
-    assert runner.calls == [["bash", "gates/codegen.sh", "abc", "automate/abc", "add dark mode"]]
+    assert runner.calls == [
+        ["bash", "gates/codegen.sh", "abc", "automate/abc", "add dark mode", "main"]
+    ]
     assert runner.cwds == ["/repo"]  # gate scripts run inside the task's repo
+
+
+def test_command_gate_passes_the_tasks_own_base_ref() -> None:
+    # Stacked PRs target a branch other than main; the gate diff must use it.
+    runner = RecordingRunner()
+    gate = CommandGate("trine-eval", "review", runner=runner)
+    stacked = Task(id="pr-10", prompt="explainers", repo="/repo", base_ref="origin/ws/copy-voice")
+    gate.evaluate(stacked, CrewResult(task_id="pr-10", branch="refs/automate/pr/10", changed=True))
+    assert runner.calls[0][-1] == "origin/ws/copy-voice"
 
 
 def test_command_gate_failure_is_a_verdict_not_an_exception() -> None:

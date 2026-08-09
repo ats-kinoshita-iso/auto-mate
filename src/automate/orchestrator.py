@@ -9,7 +9,7 @@ from automate.adapters import (
     TreehouseAdapter,
 )
 from automate.config import Settings
-from automate.harnesses import CommandGate
+from automate.harnesses import harness_gates
 from automate.models import RunRecord, RunStatus, Task, Verdict, Worktree
 from automate.ports import CrewRunner, Gate, ShipGate, WorktreeProvider
 
@@ -58,20 +58,7 @@ class Orchestrator:
             no_mistakes=NoMistakesAdapter(
                 settings.no_mistakes_bin, dry_run=dry, timeout=settings.ship_timeout_s
             ),
-            gates=[
-                CommandGate(
-                    "henkaten-council",
-                    settings.governance_cmd,
-                    dry_run=dry,
-                    timeout=settings.gate_timeout_s,
-                ),
-                CommandGate(
-                    "trine-eval",
-                    settings.codegen_cmd,
-                    dry_run=dry,
-                    timeout=settings.gate_timeout_s,
-                ),
-            ],
+            gates=list(harness_gates(settings)),
         )
 
     def run(self, task: Task) -> RunRecord:
