@@ -104,7 +104,7 @@ make test    # pytest only
 make format  # apply ruff formatting
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the design and [docs/adapters.md](docs/adapters.md) for how each tool integrates and what is still provisional.
+See [docs/architecture.md](docs/architecture.md) for the design, [docs/adapters.md](docs/adapters.md) for how each tool integrates and what is still provisional, and [docs/cloud-environment.md](docs/cloud-environment.md) for running auto-mate in a Claude Code cloud environment.
 
 ## License
 
