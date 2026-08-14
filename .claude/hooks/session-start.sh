@@ -16,7 +16,11 @@ cd "$CLAUDE_PROJECT_DIR"
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$CLAUDE_ENV_FILE"
+  # Guarded: under set -u an absent CLAUDE_ENV_FILE would kill the hook here,
+  # after installing uv but before uv sync.
+  if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$CLAUDE_ENV_FILE"
+  fi
 fi
 
 # Idempotent: resolves against uv.lock and reuses .venv on re-runs.
