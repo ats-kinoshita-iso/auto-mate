@@ -36,15 +36,17 @@ class FakeGate:
         self._name = name
         self._passed = passed
 
-    def evaluate(self, crew: CrewResult) -> Verdict:
+    def evaluate(self, task: Task, crew: CrewResult) -> Verdict:
         return Verdict(gate=self._name, passed=self._passed)
 
 
 class FakeShip:
     def __init__(self, *, pushed: bool = True) -> None:
         self._pushed = pushed
+        self.intents: list[str] = []
 
-    def gate(self, worktree: Worktree) -> GateResult:
+    def gate(self, task: Task, worktree: Worktree) -> GateResult:
+        self.intents.append(task.prompt)
         url = "https://github.com/me/repo/pull/1" if self._pushed else None
         return GateResult(task_id=worktree.task_id, pushed=self._pushed, pr_url=url)
 
@@ -62,14 +64,25 @@ def _build(
     return orchestrator, treehouse
 
 
-def test_happy_path_ships() -> None:
+def test_happy_path_ships_and_returns_worktree() -> None:
     orchestrator, treehouse = _build()
     record = orchestrator.run(TASK)
     assert record.status is RunStatus.SHIPPED
     assert record.shipped is True
     assert record.gate is not None and record.gate.pr_url is not None
     assert len(record.verdicts) == 2
-    assert treehouse.released == []  # shipped work is not released
+    # The branch survives the return (treehouse worktrees share the repo's refs),
+    # so the pooled worktree goes back on every terminal state except FAILED.
+    assert treehouse.released == ["t1"]
+
+
+def test_ship_gate_receives_the_task_intent() -> None:
+    ship = FakeShip()
+    orchestrator = Orchestrator(
+        treehouse=FakeTreehouse(), crew=FakeCrew(), no_mistakes=ship, gates=[]
+    )
+    orchestrator.run(TASK)
+    assert ship.intents == ["add dark mode"]
 
 
 def test_no_changes_releases_worktree_and_skips_gates() -> None:
@@ -81,21 +94,36 @@ def test_no_changes_releases_worktree_and_skips_gates() -> None:
     assert treehouse.released == ["t1"]
 
 
-def test_failing_gate_blocks_ship() -> None:
-    orchestrator, _ = _build(gate_passes=False)
+def test_failing_gate_blocks_ship_and_releases() -> None:
+    orchestrator, treehouse = _build(gate_passes=False)
     record = orchestrator.run(TASK)
     assert record.status is RunStatus.GATED
     assert record.gate is None  # never reached the ship gate
+    assert treehouse.released == ["t1"]
 
 
 def test_blocked_push_is_gated() -> None:
-    orchestrator, _ = _build(pushed=False)
+    orchestrator, treehouse = _build(pushed=False)
     record = orchestrator.run(TASK)
     assert record.status is RunStatus.GATED
     assert record.gate is not None and record.gate.pushed is False
+    assert treehouse.released == ["t1"]
 
 
-def test_stage_exception_is_captured_as_failed() -> None:
+def test_release_failure_does_not_mask_the_shipped_outcome() -> None:
+    class LeakyTreehouse(FakeTreehouse):
+        def release(self, worktree: Worktree) -> None:
+            raise RuntimeError("lease already returned")
+
+    orchestrator = Orchestrator(
+        treehouse=LeakyTreehouse(), crew=FakeCrew(), no_mistakes=FakeShip(), gates=[]
+    )
+    record = orchestrator.run(TASK)
+    assert record.status is RunStatus.SHIPPED
+    assert any("release failed" in line for line in record.log)
+
+
+def test_stage_exception_is_captured_as_failed_and_keeps_worktree() -> None:
     class Boom:
         def create(self, task: Task) -> Worktree:
             raise RuntimeError("treehouse offline")

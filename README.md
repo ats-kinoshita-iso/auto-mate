@@ -76,6 +76,13 @@ uv run automate config show   # full resolved configuration as JSON
 uv run automate worktrees ls  # (placeholder until the treehouse list command is wired)
 ```
 
+Review pull requests instead of implementing tasks - gate verdicts plus a deep agent review per PR, saved locally and optionally posted as a PR comment:
+
+```bash
+uv run automate review -r owner/repo --pr 8 --execute
+uv run automate review -r owner/repo --all --post --execute
+```
+
 ## Configuration
 
 All settings load from environment variables prefixed `AUTOMATE_` (and an optional `.env`).

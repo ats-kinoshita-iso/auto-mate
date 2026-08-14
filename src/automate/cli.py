@@ -9,8 +9,9 @@ from rich.console import Console
 
 from automate.adapters import TreehouseAdapter
 from automate.config import Settings, get_settings
-from automate.models import RunStatus, Task
+from automate.models import ReviewStatus, RunStatus, Task
 from automate.orchestrator import Orchestrator
+from automate.review import ReviewOrchestrator
 
 app = typer.Typer(
     name="automate",
@@ -59,6 +60,44 @@ def run(
 
 
 @app.command()
+def review(
+    repo: Annotated[
+        str,
+        typer.Option(
+            "--repo",
+            "-r",
+            help="GitHub repo (owner/name, cloned under AUTOMATE_REVIEW_CLONE_ROOT) "
+            "or path to an existing local clone.",
+        ),
+    ],
+    pr: Annotated[int | None, typer.Option("--pr", help="Review a single PR by number.")] = None,
+    all_open: Annotated[bool, typer.Option("--all", help="Review every open PR.")] = False,
+    post: Annotated[
+        bool,
+        typer.Option(
+            "--post", help="Post each review to its PR as a comment (default: local only)."
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool | None, typer.Option("--dry-run/--execute", help="Override configured dry-run.")
+    ] = None,
+) -> None:
+    """Review pull requests: gate verdicts plus a deep agent review per PR."""
+    if (pr is None) == (not all_open):
+        raise typer.BadParameter("pass exactly one of --pr N or --all")
+    orchestrator = ReviewOrchestrator.from_settings(_settings(dry_run))
+    records = (
+        orchestrator.review_open(repo, post=post)
+        if pr is None
+        else [orchestrator.review_pr(repo, pr, post=post)]
+    )
+    for record in records:
+        console.print_json(record.model_dump_json())
+    if any(record.status is ReviewStatus.FAILED for record in records):
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def status() -> None:
     """Show the resolved dry-run state and which tools/gates are configured."""
     settings = get_settings()
@@ -69,6 +108,9 @@ def status() -> None:
     console.print(f"  no-mistakes  : {settings.no_mistakes_bin}")
     console.print(f"  governance   : {settings.governance_cmd or '[dim]disabled[/dim]'}")
     console.print(f"  codegen/eval : {settings.codegen_cmd or '[dim]disabled[/dim]'}")
+    console.print(f"  gh           : {settings.gh_bin}")
+    console.print(f"  review agent : {settings.review_agent_cmd}")
+    console.print(f"  review clones: {settings.review_clone_root}")
 
 
 @config_app.command("show")

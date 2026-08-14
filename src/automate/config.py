@@ -49,6 +49,31 @@ class Settings(BaseSettings):
         "", description="Command invoked as the trine-eval codegen/evaluation gate."
     )
 
+    # PR review (gh-backed).
+    gh_bin: str = Field("gh", description="GitHub CLI binary (PATH or absolute).")
+    review_clone_root: str = Field(
+        "~/.auto-mate/repos", description="Where review clones of remote repos are created."
+    )
+    review_agent_cmd: str = Field(
+        'claude -p --setting-sources project,local --allowedTools "Read,Glob,Grep,'
+        'Bash(git diff:*),Bash(git log:*),Bash(git show:*)"',
+        description="Headless read-only agent command for the deep PR review.",
+    )
+    review_timeout_s: float = Field(
+        1800.0, description="Upper bound for one deep-review agent run."
+    )
+
+    # Timeouts (seconds) for long-running externals.
+    agent_timeout_s: float = Field(
+        3600.0, description="Upper bound for one direct-backend agent run."
+    )
+    ship_timeout_s: float = Field(
+        3600.0, description="Upper bound for one no-mistakes pipeline run (axi run blocks)."
+    )
+    gate_timeout_s: float = Field(
+        1800.0, description="Upper bound for one governance/eval gate command."
+    )
+
     # Safety.
     dry_run: bool = Field(
         True, description="When true, adapters echo commands instead of executing them."

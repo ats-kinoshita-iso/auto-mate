@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Task(BaseModel):
@@ -74,3 +74,53 @@ class RunRecord(BaseModel):
     def shipped(self) -> bool:
         """True when the run completed and shipped through the safe-push gate."""
         return self.status is RunStatus.SHIPPED
+
+
+class PullRequest(BaseModel):
+    """Metadata for one GitHub pull request (parsed from ``gh --json`` output)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    number: int
+    title: str
+    body: str = ""
+    base_ref: str = Field(validation_alias="baseRefName", description="Branch the PR targets.")
+    head_ref: str = Field(default="", validation_alias="headRefName")
+    head_sha: str = Field(default="", validation_alias="headRefOid")
+    url: str = ""
+    draft: bool = Field(default=False, validation_alias="isDraft")
+    additions: int = 0
+    deletions: int = 0
+
+    @property
+    def intent(self) -> str:
+        """Title plus body - the contract reviews judge the diff against."""
+        body = self.body.strip()
+        if len(body) > 4000:
+            body = body[:4000] + "\n[...body truncated]"
+        return f"{self.title}\n\n{body}".strip()
+
+
+class ReviewStatus(StrEnum):
+    """Terminal status of a PR review."""
+
+    REVIEWED = "reviewed"
+    POSTED = "posted"
+    FAILED = "failed"
+
+
+class ReviewRecord(BaseModel):
+    """Structured record of one PR review (the review lifecycle's RunRecord).
+
+    Gate failures are review *content* (they appear in ``verdicts`` and the
+    report), not review failures; ``FAILED`` is reserved for crashes.
+    """
+
+    pr: PullRequest
+    status: ReviewStatus
+    verdicts: list[Verdict] = Field(default_factory=list)
+    review: str = Field(default="", description="The deep-review agent's markdown body.")
+    report_path: str | None = None
+    posted: bool = False
+    comment_url: str | None = None
+    log: list[str] = Field(default_factory=list)
