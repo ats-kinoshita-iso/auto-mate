@@ -46,6 +46,7 @@ It needs only an agent on PATH, so auto-mate runs anywhere - which is why it is 
 
 For real (non-dry) runs the agent command must be headless and allowed to edit files - e.g. `claude -p --permission-mode acceptEdits --setting-sources project,local` - because an interactive command blocks forever waiting for a TTY; `AUTOMATE_AGENT_TIMEOUT_S` bounds the run.
 `--setting-sources project,local` keeps user-scope plugins out of crew runs: their hooks otherwise write runtime state (`.harness/`, `.council/`) into the crew worktree, and the commit-leftovers step would sweep it into the task's commit (the governance gate caught exactly this in live validation).
+Claude Code also ships a stronger isolation flag, `--bare` (skips hooks, plugin sync, auto-memory, and CLAUDE.md auto-discovery entirely) - but it restricts auth to `ANTHROPIC_API_KEY`/apiKeyHelper (never OAuth or keychain), so it suits hermetic agents that need no project context; crews that should see the repo's CLAUDE.md and project skills while excluding only user-scope plugins are exactly what `--setting-sources project,local` is for.
 Work the agent leaves uncommitted is committed by the adapter (`automate/<task-id>: <prompt title>`): the ship gate pushes the branch, and only commits travel.
 
 ### firstmate - [`FirstmateAdapter`](../src/automate/adapters/firstmate.py)
@@ -78,6 +79,7 @@ An empty command disables the gate (auto-pass), so the lifecycle runs standalone
 
 [`scripts/gates/`](../scripts/gates/) ships reference implementations: each runs a headless agent (`GATE_AGENT_CMD`, default `claude -p`) over the branch's diff vs `GATE_BASE_REF` (default `main`), judged against the task intent, and greps a final `VERDICT: PASS` / `VERDICT: FAIL - reason` line for the exit code.
 The diff is embedded in the prompt (capped by `GATE_DIFF_MAX`), so the gate agent needs no tool permissions.
+Because a gate agent needs no project context either, `GATE_AGENT_CMD=claude -p --bare` is a good fit when API-key auth is available: it makes the gate hermetic by construction (no hooks, no plugins, no CLAUDE.md) instead of by convention.
 `governance.sh` reviews scope drift, unexpected surface, and destructive operations through the 4M change-point lens; `codegen.sh` adversarially evaluates completeness, correctness, and craft against the intent.
 The two prompts split responsibilities explicitly so the gates stay independent signals rather than two copies of one review.
 
