@@ -45,19 +45,42 @@ class RecordingRunner(CommandRunner):
 
 
 def test_treehouse_create_acquires_lease_and_cuts_branch() -> None:
-    runner = RecordingRunner(stdout="/home/u/.treehouse/abc/1/repo")
+    allocation = (
+        '{"path": "/home/u/.treehouse/abc/1/repo", "lease_id": "lease-01XYZ",'
+        ' "lease_holder": "abc", "leased_at": "2026-08-17T00:00:00Z"}'
+    )
+    runner = RecordingRunner(stdout=allocation)
     adapter = TreehouseAdapter("treehouse", runner=runner)
     worktree = adapter.create(Task(id="abc", prompt="do it", repo="/repo"))
     assert worktree.path == "/home/u/.treehouse/abc/1/repo"
     assert worktree.branch == "automate/abc"
+    assert worktree.lease_id == "lease-01XYZ"
     assert runner.calls == [
-        ["treehouse", "get", "--lease", "--lease-holder", "abc"],
+        ["treehouse", "get", "--lease", "--lease-holder", "abc", "--json"],
         # -C, not -c: re-running a task id resets its branch instead of failing.
         ["git", "-C", "/home/u/.treehouse/abc/1/repo", "switch", "-C", "automate/abc"],
     ]
 
 
-def test_treehouse_release_returns_worktree_guarded_by_holder() -> None:
+def test_treehouse_create_rejects_unparseable_allocation() -> None:
+    runner = RecordingRunner(stdout="not json")
+    adapter = TreehouseAdapter("treehouse", runner=runner)
+    with pytest.raises(AdapterError, match="unparseable allocation"):
+        adapter.create(Task(id="abc", prompt="do it", repo="/repo"))
+
+
+def test_treehouse_release_prefers_lease_id_guard() -> None:
+    runner = RecordingRunner()
+    adapter = TreehouseAdapter("treehouse", runner=runner)
+    adapter.release(
+        Worktree(task_id="abc", path="/wt", branch="automate/abc", lease_id="lease-01XYZ")
+    )
+    assert runner.calls == [
+        ["treehouse", "return", "/wt", "--force", "--if-lease-id", "lease-01XYZ"]
+    ]
+
+
+def test_treehouse_release_falls_back_to_holder_guard_without_lease_id() -> None:
     runner = RecordingRunner()
     adapter = TreehouseAdapter("treehouse", runner=runner)
     adapter.release(Worktree(task_id="abc", path="/wt", branch="automate/abc"))
