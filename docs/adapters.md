@@ -5,6 +5,7 @@ Every adapter holds a [`CommandRunner`](../src/automate/adapters/base.py); the r
 The runner supports `check=False` (a non-zero exit becomes data instead of an exception - how gates fail soft) and per-call timeouts (a hung external raises instead of blocking forever).
 
 The treehouse and no-mistakes surfaces below are **validated live** (treehouse v2.1.1, no-mistakes v1.45.4, Linux/WSL, 2026-08-06), not just read from source.
+Release-watch (2026-08-17): treehouse v2.1.1 is still latest; no-mistakes' recommended pin is **v1.48.0** - the last stable release; its changelog shows no `axi run`/TOON/exit-code changes since v1.45.4, while v1.49.0+ are pre-releases (an eval-toolkit arc). The TOON contract is documented but not *guaranteed* stable, so re-verify the parsed patterns when moving the pin.
 The firstmate surface remains provisional and only runs under `dry_run`.
 
 ## treehouse - `WorktreeProvider`
@@ -34,6 +35,7 @@ The firstmate surface remains provisional and only runs under `dry_run`.
   - The `pr` step auto-skips for non-GitHub remotes, so fully local runs (a path remote) work end to end.
 - How the adapter drives it: `gate()` re-runs `init` in the task's repo (idempotent), then runs `axi run --intent <task.prompt> --yes` in the worktree with `check=False` and a timeout, and parses the TOON: `outcome` decides `pushed`, `fixes[...]` rows become findings, and a `https://.../pull/N` URL (present for GitHub targets) becomes `pr_url`.
 - This replaced the original raw `git push no-mistakes <branch>` + stdout-scrape design: the push trigger is asynchronous and its stdout does not reliably carry the PR URL, while `axi run` is synchronous and structured.
+- TOON parser note (v1.46+): unsupported C0 control bytes in output now render as visible `\xNN` escapes (tabs/CR/LF and printable Unicode unchanged). The three parsed patterns (`^outcome:`, `fixes[...]` rows, the PR URL) are unaffected, but keep this in mind if the parsed surface ever grows.
 
 ## Crew backends - `CrewRunner`
 
