@@ -69,6 +69,18 @@ def test_treehouse_create_rejects_unparseable_allocation() -> None:
         adapter.create(Task(id="abc", prompt="do it", repo="/repo"))
 
 
+def test_treehouse_create_rejects_null_path_and_normalizes_empty_lease_id() -> None:
+    runner = RecordingRunner(stdout='{"path": null, "lease_id": "x"}')
+    adapter = TreehouseAdapter("treehouse", runner=runner)
+    with pytest.raises(AdapterError, match="no usable path"):
+        adapter.create(Task(id="abc", prompt="do it", repo="/repo"))
+
+    runner = RecordingRunner(stdout='{"path": "/wt", "lease_id": ""}')
+    adapter = TreehouseAdapter("treehouse", runner=runner)
+    worktree = adapter.create(Task(id="abc", prompt="do it", repo="/repo"))
+    assert worktree.lease_id is None  # empty string normalized: release uses holder guard
+
+
 def test_treehouse_release_prefers_lease_id_guard() -> None:
     runner = RecordingRunner()
     adapter = TreehouseAdapter("treehouse", runner=runner)

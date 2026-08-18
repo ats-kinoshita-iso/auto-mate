@@ -63,10 +63,12 @@ class TreehouseAdapter:
     def release(self, worktree: Worktree) -> None:
         """Return a leased worktree to the pool (only if this task still holds it)."""
         # Prefer the per-acquisition lease-id guard; fall back to the holder label
-        # for worktrees acquired before the JSON mode (or synthesized in dry-run).
+        # for worktrees acquired before the JSON mode. `is not None` (not truthiness):
+        # a manually-built empty-string lease_id should fail loudly at treehouse
+        # rather than silently downgrade to the weaker holder guard.
         guard = (
             ["--if-lease-id", worktree.lease_id]
-            if worktree.lease_id
+            if worktree.lease_id is not None
             else ["--if-lease-holder", worktree.task_id]
         )
         self._runner.run([self._binary, "return", worktree.path, "--force", *guard])
@@ -87,5 +89,14 @@ class TreehouseAdapter:
             raise AdapterError(
                 f"treehouse get --json printed an unparseable allocation: {stdout!r}"
             ) from exc
+        if not isinstance(path, str) or not path:
+            # A granted lease with no usable path would otherwise crash later in
+            # git and orphan the lease; fail loudly at the boundary instead.
+            raise AdapterError(
+                f"treehouse get --json allocation has no usable path: {stdout!r}"
+            )
         lease_id = allocation.get("lease_id")
+        # Normalize absent/null/empty to None so release() falls back to the holder guard.
+        if not isinstance(lease_id, str) or not lease_id:
+            lease_id = None
         return path, lease_id
