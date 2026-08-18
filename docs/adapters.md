@@ -94,6 +94,7 @@ The two prompts split responsibilities explicitly so the gates stay independent 
   Posting uses `gh pr comment`, not `gh pr review`: GitHub rejects formal review events on self-authored PRs, and a comment is the honest shape for an automated report.
 - `AgentReviewAdapter` runs `AUTOMATE_REVIEW_AGENT_CMD` in the PR checkout.
   Read-only-ness is enforced by that command's tool allowlist (default: Read/Glob/Grep plus `git diff/log/show`), and `--setting-sources project,local` keeps user-scope plugin hooks out of the checkout - the same crew-isolation lesson as the direct backend.
+- `AUTOMATE_REVIEW_ENGINE` selects what that agent is asked to do: `prompt` (default) sends the hand-rolled review prompt above; `code-review` invokes Claude Code's native `/code-review` skill against the PR's base ref at high effort - a multi-pass review (parallel finders, then a verification pass that filters false positives). Validated headless 2026-08-18 under the same read-only allowlist: the output is prose plus a JSON findings block and lands in the persisted report unchanged. The tradeoff: the native skill cannot be told the PR's *intent*, so intent conformance stays with the governance/codegen gates either way; pick `code-review` for defect-finding strength, `prompt` when the intent-aware summary matters more.
 
 ## Adding or replacing a tool
 

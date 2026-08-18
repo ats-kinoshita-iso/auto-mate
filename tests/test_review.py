@@ -135,6 +135,17 @@ def test_review_agent_runs_in_worktree_with_intent_and_base() -> None:
     assert runner.timeouts == [1800.0]
 
 
+def test_review_agent_code_review_engine_invokes_native_skill() -> None:
+    runner = RecordingRunner(stdout="## Review findings\n...")
+    adapter = AgentReviewAdapter(
+        agent_cmd="claude -p --flag", engine="code-review", runner=runner
+    )
+    adapter.review(_TASK, _WORKTREE)
+    assert runner.calls[0][:4] == ["claude", "-p", "--flag", "--"]
+    # The native skill takes the base ref + effort level; intent stays with the gates.
+    assert runner.calls[0][-1] == f"/code-review {_TASK.base_ref} high"
+
+
 # --- ReviewOrchestrator --------------------------------------------------------
 
 

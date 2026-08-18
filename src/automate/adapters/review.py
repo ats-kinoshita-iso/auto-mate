@@ -35,6 +35,14 @@ Cover correctness, unmet intent, and maintainability; skip pure style nits.
 Rules: you are read-only - never edit files. Do not output a PASS/FAIL verdict; separate \
 gates own that. Output ONLY the markdown review, no preamble."""
 
+# The native-skill engine: /code-review runs a multi-pass review (parallel finders,
+# then a verification step that filters false positives) and takes a target + effort
+# level. Validated headless (2026-08-18): with the read-only allowlist it reviews
+# `<base-ref>...HEAD` in the checkout and prints prose + a JSON findings block, which
+# lands in the persisted report like any other review body. The PR intent cannot be
+# threaded into the skill invocation - intent conformance stays with the gates.
+_CODE_REVIEW_PROMPT = "/code-review {base_ref} high"
+
 
 class AgentReviewAdapter:
     """Run a headless read-only agent over a PR checkout and return its review."""
@@ -43,17 +51,22 @@ class AgentReviewAdapter:
         self,
         *,
         agent_cmd: str,
+        engine: str = "prompt",
         dry_run: bool = True,
         runner: CommandRunner | None = None,
         timeout: float | None = None,
     ) -> None:
         self._agent_cmd = agent_cmd
+        self._engine = engine
         self._runner = runner or CommandRunner(dry_run=dry_run)
         self._timeout = timeout
 
     def review(self, task: Task, worktree: Worktree) -> str:
         """Review the checked-out PR head in ``worktree``; return the markdown body."""
-        prompt = _PROMPT.format(base_ref=task.base_ref, intent=task.prompt)
+        if self._engine == "code-review":
+            prompt = _CODE_REVIEW_PROMPT.format(base_ref=task.base_ref)
+        else:
+            prompt = _PROMPT.format(base_ref=task.base_ref, intent=task.prompt)
         # "--" ends option parsing: variadic flags (e.g. claude's --allowedTools)
         # would otherwise swallow the prompt as more flag values.
         result = self._runner.run(

@@ -59,6 +59,13 @@ class Settings(BaseSettings):
         'Bash(git diff:*),Bash(git log:*),Bash(git show:*)"',
         description="Headless read-only agent command for the deep PR review.",
     )
+    review_engine: Literal["prompt", "code-review"] = Field(
+        "prompt",
+        description="Deep-review engine: 'prompt' sends the hand-rolled review prompt; "
+        "'code-review' invokes Claude Code's native /code-review skill (multi-pass with "
+        "false-positive verification) against the PR's base ref. Validated headless "
+        "2026-08-18; both run under review_agent_cmd's read-only allowlist.",
+    )
     review_timeout_s: float = Field(
         1800.0, description="Upper bound for one deep-review agent run."
     )
