@@ -92,9 +92,7 @@ class TreehouseAdapter:
         if not isinstance(path, str) or not path:
             # A granted lease with no usable path would otherwise crash later in
             # git and orphan the lease; fail loudly at the boundary instead.
-            raise AdapterError(
-                f"treehouse get --json allocation has no usable path: {stdout!r}"
-            )
+            raise AdapterError(f"treehouse get --json allocation has no usable path: {stdout!r}")
         lease_id = allocation.get("lease_id")
         # Normalize absent/null/empty to None so release() falls back to the holder guard.
         if not isinstance(lease_id, str) or not lease_id:
