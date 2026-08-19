@@ -37,10 +37,13 @@ gates own that. Output ONLY the markdown review, no preamble."""
 
 # The native-skill engine: /code-review runs a multi-pass review (parallel finders,
 # then a verification step that filters false positives) and takes a target + effort
-# level. Validated headless (2026-08-18): with the read-only allowlist it reviews
-# `<base-ref>...HEAD` in the checkout and prints prose + a JSON findings block, which
-# lands in the persisted report like any other review body. The PR intent cannot be
-# threaded into the skill invocation - intent conformance stays with the gates.
+# level. Validated headless with the read-only allowlist against both a bare branch
+# target ("main", 2026-08-18) and the origin/-prefixed remote-tracking form this
+# adapter actually sends ("origin/main", 2026-08-19 - the review lifecycle always
+# builds base_ref as f"origin/{pr.base_ref}"): both resolve and review the correct
+# diff, printing prose + a JSON findings block that lands in the persisted report
+# like any other review body. The PR intent cannot be threaded into the skill
+# invocation - intent conformance stays with the gates.
 _CODE_REVIEW_PROMPT = "/code-review {base_ref} high"
 
 

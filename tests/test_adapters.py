@@ -99,6 +99,15 @@ def test_treehouse_release_falls_back_to_holder_guard_without_lease_id() -> None
     assert runner.calls == [["treehouse", "return", "/wt", "--force", "--if-lease-holder", "abc"]]
 
 
+def test_treehouse_release_passes_empty_lease_id_through_loudly() -> None:
+    # A manually-built empty-string lease_id must NOT silently downgrade to the
+    # holder guard - it goes through as --if-lease-id "" and fails at treehouse.
+    runner = RecordingRunner()
+    adapter = TreehouseAdapter("treehouse", runner=runner)
+    adapter.release(Worktree(task_id="abc", path="/wt", branch="automate/abc", lease_id=""))
+    assert runner.calls == [["treehouse", "return", "/wt", "--force", "--if-lease-id", ""]]
+
+
 _PASSED_TOON = """run:
   id: "01KZD0017H49TFKZXBFDQK6FRM"
   branch: automate/abc
