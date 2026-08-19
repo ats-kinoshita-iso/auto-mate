@@ -65,6 +65,7 @@ class ReviewOrchestrator:
             treehouse=TreehouseAdapter(settings.treehouse_bin, dry_run=dry),
             reviewer=AgentReviewAdapter(
                 agent_cmd=settings.review_agent_cmd,
+                engine=settings.review_engine,
                 dry_run=dry,
                 timeout=settings.review_timeout_s,
             ),

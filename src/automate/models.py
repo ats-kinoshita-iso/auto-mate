@@ -22,6 +22,11 @@ class Worktree(BaseModel):
     task_id: str
     path: str = Field(..., description="Filesystem path to the worktree root.")
     branch: str = Field(..., description="Branch checked out in the worktree.")
+    lease_id: str | None = Field(
+        None,
+        description="treehouse per-acquisition lease id; guards release against "
+        "releasing a lease a newer run of the same task now owns.",
+    )
 
 
 class CrewResult(BaseModel):

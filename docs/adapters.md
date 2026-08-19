@@ -5,6 +5,7 @@ Every adapter holds a [`CommandRunner`](../src/automate/adapters/base.py); the r
 The runner supports `check=False` (a non-zero exit becomes data instead of an exception - how gates fail soft) and per-call timeouts (a hung external raises instead of blocking forever).
 
 The treehouse and no-mistakes surfaces below are **validated live** (treehouse v2.1.1, no-mistakes v1.45.4, Linux/WSL, 2026-08-06), not just read from source.
+Release-watch (2026-08-17): treehouse v2.1.1 is still latest; no-mistakes' recommended pin is **v1.48.0** - the last stable release; its changelog shows no `axi run`/TOON/exit-code changes since v1.45.4, while v1.49.0+ are pre-releases (an eval-toolkit arc). The TOON contract is documented but not *guaranteed* stable, so re-verify the parsed patterns when moving the pin.
 The firstmate surface remains provisional and only runs under `dry_run`.
 
 ## treehouse - `WorktreeProvider`
@@ -34,6 +35,7 @@ The firstmate surface remains provisional and only runs under `dry_run`.
   - The `pr` step auto-skips for non-GitHub remotes, so fully local runs (a path remote) work end to end.
 - How the adapter drives it: `gate()` re-runs `init` in the task's repo (idempotent), then runs `axi run --intent <task.prompt> --yes` in the worktree with `check=False` and a timeout, and parses the TOON: `outcome` decides `pushed`, `fixes[...]` rows become findings, and a `https://.../pull/N` URL (present for GitHub targets) becomes `pr_url`.
 - This replaced the original raw `git push no-mistakes <branch>` + stdout-scrape design: the push trigger is asynchronous and its stdout does not reliably carry the PR URL, while `axi run` is synchronous and structured.
+- TOON parser note (v1.46+): unsupported C0 control bytes in output now render as visible `\xNN` escapes (tabs/CR/LF and printable Unicode unchanged). The three parsed patterns (`^outcome:`, `fixes[...]` rows, the PR URL) are unaffected, but keep this in mind if the parsed surface ever grows.
 
 ## Crew backends - `CrewRunner`
 
@@ -46,6 +48,7 @@ It needs only an agent on PATH, so auto-mate runs anywhere - which is why it is 
 
 For real (non-dry) runs the agent command must be headless and allowed to edit files - e.g. `claude -p --permission-mode acceptEdits --setting-sources project,local` - because an interactive command blocks forever waiting for a TTY; `AUTOMATE_AGENT_TIMEOUT_S` bounds the run.
 `--setting-sources project,local` keeps user-scope plugins out of crew runs: their hooks otherwise write runtime state (`.harness/`, `.council/`) into the crew worktree, and the commit-leftovers step would sweep it into the task's commit (the governance gate caught exactly this in live validation).
+Claude Code also ships a stronger isolation flag, `--bare` (skips hooks, plugin sync, auto-memory, and CLAUDE.md auto-discovery entirely) - but it restricts auth to `ANTHROPIC_API_KEY`/apiKeyHelper (never OAuth or keychain), so it suits hermetic agents that need no project context; crews that should see the repo's CLAUDE.md and project skills while excluding only user-scope plugins are exactly what `--setting-sources project,local` is for.
 Work the agent leaves uncommitted is committed by the adapter (`automate/<task-id>: <prompt title>`): the ship gate pushes the branch, and only commits travel.
 
 ### firstmate - [`FirstmateAdapter`](../src/automate/adapters/firstmate.py)
@@ -78,6 +81,7 @@ An empty command disables the gate (auto-pass), so the lifecycle runs standalone
 
 [`scripts/gates/`](../scripts/gates/) ships reference implementations: each runs a headless agent (`GATE_AGENT_CMD`, default `claude -p`) over the branch's diff vs `GATE_BASE_REF` (default `main`), judged against the task intent, and greps a final `VERDICT: PASS` / `VERDICT: FAIL - reason` line for the exit code.
 The diff is embedded in the prompt (capped by `GATE_DIFF_MAX`), so the gate agent needs no tool permissions.
+Because a gate agent needs no project context either, `GATE_AGENT_CMD=claude -p --bare` is a good fit when API-key auth is available: it makes the gate hermetic by construction (no hooks, no plugins, no CLAUDE.md) instead of by convention.
 `governance.sh` reviews scope drift, unexpected surface, and destructive operations through the 4M change-point lens; `codegen.sh` adversarially evaluates completeness, correctness, and craft against the intent.
 The two prompts split responsibilities explicitly so the gates stay independent signals rather than two copies of one review.
 
@@ -90,6 +94,7 @@ The two prompts split responsibilities explicitly so the gates stay independent 
   Posting uses `gh pr comment`, not `gh pr review`: GitHub rejects formal review events on self-authored PRs, and a comment is the honest shape for an automated report.
 - `AgentReviewAdapter` runs `AUTOMATE_REVIEW_AGENT_CMD` in the PR checkout.
   Read-only-ness is enforced by that command's tool allowlist (default: Read/Glob/Grep plus `git diff/log/show`), and `--setting-sources project,local` keeps user-scope plugin hooks out of the checkout - the same crew-isolation lesson as the direct backend.
+- `AUTOMATE_REVIEW_ENGINE` selects what that agent is asked to do: `prompt` (default) sends the hand-rolled review prompt above; `code-review` invokes Claude Code's native `/code-review` skill against the PR's base ref at high effort - a multi-pass review (parallel finders, then a verification pass that filters false positives). Validated headless 2026-08-18 under the same read-only allowlist: the output is prose plus a JSON findings block and lands in the persisted report unchanged. The tradeoff: the native skill cannot be told the PR's *intent*, so intent conformance stays with the governance/codegen gates either way; pick `code-review` for defect-finding strength, `prompt` when the intent-aware summary matters more.
 
 ## Adding or replacing a tool
 
