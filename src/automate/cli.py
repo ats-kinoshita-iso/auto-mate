@@ -7,7 +7,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from automate.adapters import TreehouseAdapter
+from automate.adapters import GitWorktreeProvider, TreehouseAdapter
 from automate.config import Settings, get_settings
 from automate.models import ReviewStatus, RunStatus, Task
 from automate.orchestrator import Orchestrator
@@ -125,9 +125,13 @@ def config_show() -> None:
 def worktrees_ls(
     repo: Annotated[str, typer.Option("--repo", "-r", help="Repository to inspect.")] = ".",
 ) -> None:
-    """Show treehouse's worktree pool for a repository."""
+    """Show the configured backend's worktrees for a repository."""
     settings = get_settings()
-    adapter = TreehouseAdapter(settings.treehouse_bin, dry_run=settings.dry_run)
+    adapter: TreehouseAdapter | GitWorktreeProvider = (
+        GitWorktreeProvider(worktree_root=settings.worktree_root, dry_run=settings.dry_run)
+        if settings.worktree_backend == "git"
+        else TreehouseAdapter(settings.treehouse_bin, dry_run=settings.dry_run)
+    )
     console.print(adapter.status(repo), markup=False)  # raw tool output, not Rich markup
 
 

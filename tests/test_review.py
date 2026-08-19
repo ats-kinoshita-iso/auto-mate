@@ -333,11 +333,26 @@ def test_dry_run_walks_the_whole_review_lifecycle(tmp_path: Path) -> None:
 
 
 def test_review_from_settings_selects_cloud_runnable_backends() -> None:
+    from pathlib import Path as _Path
+
     from automate.adapters import GitHost, GitWorktreeProvider
     from automate.config import Settings
 
     orchestrator = ReviewOrchestrator.from_settings(
-        Settings(_env_file=None, review_host="git", worktree_backend="git")
+        Settings(
+            _env_file=None,
+            review_host="git",
+            worktree_backend="git",
+            review_base_ref="develop",
+            review_intent="Title\nBody",
+            worktree_root="/tmp/custom-wt",
+        )
     )
-    assert isinstance(orchestrator._host, GitHost)
+    host = orchestrator._host
+    assert isinstance(host, GitHost)
     assert isinstance(orchestrator._treehouse, GitWorktreeProvider)
+    # Settings must actually propagate into the adapters, not just pick classes.
+    pr = host.view("/clone", 3)
+    assert pr.base_ref == "develop"
+    assert pr.title == "Title" and pr.body == "Body"
+    assert orchestrator._treehouse._root == _Path("/tmp/custom-wt")

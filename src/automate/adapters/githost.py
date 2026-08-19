@@ -82,6 +82,9 @@ class GitHost:
             title=title.strip() or f"PR #{number} (metadata via git host)",
             body=body.strip(),
             base_ref=self._base_ref,
+            # Deliberately the ref path, not a branch name: the git protocol
+            # doesn't expose the head's human branch name, and the ref path is
+            # the truthful head identity this host knows (reports show it as-is).
             head_ref=f"refs/pull/{number}/head",
         )
 

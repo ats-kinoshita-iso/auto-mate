@@ -39,7 +39,10 @@ class GitWorktreeProvider:
         if path.is_dir() and not self._runner.dry_run:
             # A leftover worktree from a crashed run: remove it so add succeeds.
             self._runner.run(["git", "-C", task.repo, "worktree", "remove", "--force", str(path)])
-        self._root.mkdir(parents=True, exist_ok=True)
+        if not self._runner.dry_run:
+            # Keep dry-run side-effect-free like every other adapter: the only
+            # filesystem mutation not routed through the runner stays gated too.
+            self._root.mkdir(parents=True, exist_ok=True)
         self._runner.run(["git", "-C", task.repo, "worktree", "add", "--detach", str(path)])
         branch = f"automate/{task.id}"
         # Same convention as the treehouse adapter: -C resets the branch on re-runs.
