@@ -330,3 +330,14 @@ def test_dry_run_walks_the_whole_review_lifecycle(tmp_path: Path) -> None:
     assert record.pr.number == 7
     assert "[dry-run]" in record.review
     assert record.report_path is not None
+
+
+def test_review_from_settings_selects_cloud_runnable_backends() -> None:
+    from automate.adapters import GitHost, GitWorktreeProvider
+    from automate.config import Settings
+
+    orchestrator = ReviewOrchestrator.from_settings(
+        Settings(_env_file=None, review_host="git", worktree_backend="git")
+    )
+    assert isinstance(orchestrator._host, GitHost)
+    assert isinstance(orchestrator._treehouse, GitWorktreeProvider)

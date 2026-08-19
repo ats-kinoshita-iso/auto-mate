@@ -110,6 +110,8 @@ def status() -> None:
     console.print(f"  codegen/eval : {settings.codegen_cmd or '[dim]disabled[/dim]'}")
     console.print(f"  gh           : {settings.gh_bin}")
     console.print(f"  review agent : {settings.review_agent_cmd} (engine={settings.review_engine})")
+    console.print(f"  review host  : {settings.review_host}")
+    console.print(f"  worktrees    : {settings.worktree_backend} (root={settings.worktree_root})")
     console.print(f"  review clones: {settings.review_clone_root}")
 
 

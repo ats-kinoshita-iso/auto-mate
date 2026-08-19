@@ -102,3 +102,12 @@ The two prompts split responsibilities explicitly so the gates stay independent 
 2. Hold a `CommandRunner` and build commands through it, so dry-run and error handling come for free.
 3. Wire it in [`Orchestrator.from_settings`](../src/automate/orchestrator.py) and add the config knob to [`Settings`](../src/automate/config.py).
 4. Add a test that asserts the constructed command and the parsed result.
+
+## Cloud-runnable reviews - `GitHost` + `GitWorktreeProvider`
+
+Claude Code cloud containers (and most CI images) have git - routed through an authenticated proxy - but no `gh` and no `treehouse`. Two config knobs swap those seams for plain-git backends so `automate review` runs end to end there:
+
+- `AUTOMATE_REVIEW_HOST=git` selects [`GitHost`](../src/automate/adapters/githost.py): clones via `https://github.com/<owner>/<name>.git`, fetches PR heads from GitHub's public `refs/pull/<N>/head` namespace into the same `refs/automate/pr/<N>` namespace as the gh host, and takes PR metadata from config (`AUTOMATE_REVIEW_BASE_REF` for the base branch; `AUTOMATE_REVIEW_INTENT` for the title/description the gates judge against - first line is the title, the rest the body). `--all` and `--post` need the GitHub API and fail loudly by design.
+- `AUTOMATE_WORKTREE_BACKEND=git` selects [`GitWorktreeProvider`](../src/automate/adapters/gitworktree.py): one plain `git worktree` per task under `AUTOMATE_WORKTREE_ROOT`, branch cut exactly like the treehouse adapter, removed with `--force` on release (the parent repo is resolved from the worktree via `--git-common-dir`). No pooling, no cached deps, no leases - treehouse remains the richer local backend.
+
+The intended cloud division of labor: the orchestrating Claude session supplies PR metadata (from its own GitHub access) via the two env vars, `automate review --pr N --execute` does the deterministic middle - fetch, gates, deep review, timestamped report under `<workspace>/reviews/` - and the session posts the saved report as the PR comment. Defaults are unchanged (`gh` + `treehouse`), so local runs behave exactly as before.

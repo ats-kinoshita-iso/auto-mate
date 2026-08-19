@@ -355,3 +355,106 @@ def test_command_gate_failure_is_a_verdict_not_an_exception() -> None:
     verdict = gate.evaluate(_TASK, _CREW)
     assert verdict.passed is False
     assert verdict.findings == ["gate reported failure"]
+
+
+# --- GitHost (cloud-runnable PR host) ------------------------------------------
+
+
+def test_githost_clones_by_https_url_keyed_by_full_slug(tmp_path: Path) -> None:
+    from automate.adapters import GitHost
+
+    runner = RecordingRunner()
+    root = tmp_path / "repos"
+    host = GitHost(clone_root=str(root), runner=runner)
+    assert host.ensure_clone("alice/tools") == str(root / "alice" / "tools")
+    assert runner.calls == [
+        ["git", "clone", "https://github.com/alice/tools.git", str(root / "alice" / "tools")],
+    ]
+
+
+def test_githost_view_builds_metadata_from_config() -> None:
+    from automate.adapters import GitHost
+
+    host = GitHost(
+        clone_root="/tmp/repos",
+        base_ref="develop",
+        intent="Add dark mode\nUsers asked for it.",
+        runner=RecordingRunner(),
+    )
+    pr = host.view("/clone", 7)
+    assert pr.number == 7
+    assert pr.title == "Add dark mode"
+    assert pr.body == "Users asked for it."
+    assert pr.base_ref == "develop"
+    assert "Add dark mode" in pr.intent
+
+
+def test_githost_fetches_pull_head_and_base_like_gh() -> None:
+    from automate.adapters import GitHost
+    from automate.models import PullRequest
+
+    runner = RecordingRunner()
+    host = GitHost(clone_root="/tmp/repos", runner=runner, timeout=123.0)
+    pr = PullRequest(number=7, title="t", base_ref="develop")
+    ref = host.fetch_pr("/clone", pr)
+    assert ref == "refs/automate/pr/7"
+    assert runner.calls == [
+        [
+            "git",
+            "-C",
+            "/clone",
+            "fetch",
+            "origin",
+            "+refs/pull/7/head:refs/automate/pr/7",
+            "+refs/heads/develop:refs/remotes/origin/develop",
+        ]
+    ]
+    assert runner.timeouts == [123.0]
+
+
+def test_githost_refuses_api_shaped_operations_loudly() -> None:
+    from automate.adapters import GitHost
+
+    host = GitHost(clone_root="/tmp/repos", runner=RecordingRunner())
+    with pytest.raises(AdapterError, match="gh host"):
+        host.list_open("/clone")
+    with pytest.raises(AdapterError, match="saved locally"):
+        host.comment("/clone", 7, "body")
+
+
+# --- GitWorktreeProvider (cloud-runnable worktrees) ----------------------------
+
+
+def test_git_worktree_create_adds_detached_worktree_and_cuts_branch(tmp_path: Path) -> None:
+    from automate.adapters import GitWorktreeProvider
+
+    runner = RecordingRunner()
+    provider = GitWorktreeProvider(worktree_root=str(tmp_path / "wt"), runner=runner)
+    worktree = provider.create(Task(id="abc", prompt="x", repo="/repos/myrepo"))
+    expected = str(tmp_path / "wt" / "myrepo-abc")
+    assert worktree.path == expected
+    assert worktree.branch == "automate/abc"
+    assert worktree.lease_id is None  # plain git has no leases
+    assert runner.calls == [
+        ["git", "-C", "/repos/myrepo", "worktree", "add", "--detach", expected],
+        ["git", "-C", expected, "switch", "-C", "automate/abc"],
+    ]
+
+
+def test_git_worktree_release_resolves_parent_repo_from_the_worktree() -> None:
+    from automate.adapters import GitWorktreeProvider
+
+    runner = RecordingRunner(stdout="/repos/myrepo/.git\n")
+    provider = GitWorktreeProvider(worktree_root="/tmp/wt", runner=runner)
+    provider.release(Worktree(task_id="abc", path="/tmp/wt/myrepo-abc", branch="automate/abc"))
+    assert runner.calls == [
+        [
+            "git",
+            "-C",
+            "/tmp/wt/myrepo-abc",
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ],
+        ["git", "-C", "/repos/myrepo", "worktree", "remove", "--force", "/tmp/wt/myrepo-abc"],
+    ]

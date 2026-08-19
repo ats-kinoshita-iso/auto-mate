@@ -59,6 +59,33 @@ class Settings(BaseSettings):
         'Bash(git diff:*),Bash(git log:*),Bash(git show:*)"',
         description="Headless read-only agent command for the deep PR review.",
     )
+    review_host: Literal["gh", "git"] = Field(
+        "gh",
+        description="PR host backend: 'gh' drives the gh CLI (full metadata, listing, "
+        "posting); 'git' is the cloud-runnable plain-git host (PR heads via "
+        "refs/pull/N/head; metadata from review_base_ref/review_intent; no listing "
+        "or posting - the orchestrating session posts the saved report).",
+    )
+    review_base_ref: str = Field(
+        "main",
+        description="git host only: the PR's base branch (the gh host reads it from "
+        "the PR's own metadata).",
+    )
+    review_intent: str = Field(
+        "",
+        description="git host only: the PR's title (first line) and description "
+        "(rest) for the gates to judge the diff against; empty uses a neutral "
+        "placeholder.",
+    )
+    worktree_backend: Literal["treehouse", "git"] = Field(
+        "treehouse",
+        description="Review worktree provisioning: 'treehouse' (pooling + leases) or "
+        "'git' (plain git worktree - cloud-runnable, no extra binary).",
+    )
+    worktree_root: str = Field(
+        "~/.auto-mate/worktrees",
+        description="git worktree backend only: where per-task worktrees are created.",
+    )
     review_engine: Literal["prompt", "code-review"] = Field(
         "prompt",
         description="Deep-review engine: 'prompt' sends the hand-rolled review prompt; "
