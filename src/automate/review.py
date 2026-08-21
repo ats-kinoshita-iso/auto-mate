@@ -13,7 +13,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from automate.adapters import AgentReviewAdapter, GhAdapter, TreehouseAdapter
+from automate.adapters import (
+    AgentReviewAdapter,
+    GhAdapter,
+    GitHost,
+    GitWorktreeProvider,
+    TreehouseAdapter,
+)
 from automate.config import Settings
 from automate.harnesses import harness_gates
 from automate.models import (
@@ -55,14 +61,30 @@ class ReviewOrchestrator:
     def from_settings(cls, settings: Settings) -> ReviewOrchestrator:
         """Build a review orchestrator with the bundled adapters wired from config."""
         dry = settings.dry_run
-        return cls(
-            host=GhAdapter(
+        host: PullRequestHost = (
+            GitHost(
+                clone_root=settings.review_clone_root,
+                base_ref=settings.review_base_ref,
+                intent=settings.review_intent,
+                dry_run=dry,
+                timeout=settings.review_timeout_s,
+            )
+            if settings.review_host == "git"
+            else GhAdapter(
                 settings.gh_bin,
                 clone_root=settings.review_clone_root,
                 dry_run=dry,
                 timeout=settings.review_timeout_s,
-            ),
-            treehouse=TreehouseAdapter(settings.treehouse_bin, dry_run=dry),
+            )
+        )
+        worktrees: WorktreeProvider = (
+            GitWorktreeProvider(worktree_root=settings.worktree_root, dry_run=dry)
+            if settings.worktree_backend == "git"
+            else TreehouseAdapter(settings.treehouse_bin, dry_run=dry)
+        )
+        return cls(
+            host=host,
+            treehouse=worktrees,
             reviewer=AgentReviewAdapter(
                 agent_cmd=settings.review_agent_cmd,
                 engine=settings.review_engine,
