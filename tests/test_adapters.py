@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -25,6 +27,7 @@ class RecordingRunner(CommandRunner):
         self.calls: list[list[str]] = []
         self.cwds: list[str | None] = []
         self.timeouts: list[float | None] = []
+        self.envs: list[Mapping[str, str] | None] = []
         self._stdout = stdout
         self._returncode = returncode
 
@@ -35,10 +38,12 @@ class RecordingRunner(CommandRunner):
         cwd: str | None = None,
         check: bool = True,
         timeout: float | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> CommandResult:
         self.calls.append(command)
         self.cwds.append(cwd)
         self.timeouts.append(timeout)
+        self.envs.append(env)
         return CommandResult(
             command=command, returncode=self._returncode, stdout=self._stdout, stderr=""
         )
@@ -289,10 +294,76 @@ def test_direct_crew_runs_agent_and_reports_no_changes() -> None:
         Task(id="abc", prompt="add dark mode", repo="/repo"),
         Worktree(task_id="abc", path="/wt", branch="automate/abc"),
     )
-    assert runner.calls[0] == ["claude", "--print", "--", "add dark mode"]
+    # A Claude Code agent is asked for its JSON result so the run record carries usage.
+    assert runner.calls[0] == [
+        "claude",
+        "--print",
+        "--output-format",
+        "json",
+        "--",
+        "add dark mode",
+    ]
     assert runner.timeouts[0] == 900.0
+    env = runner.envs[0]
+    assert env is not None and "CLAUDE_CODE_SESSION_ID" not in env  # child gets its own id
     assert crew.changed is False
+    assert crew.usage is None  # empty stdout: nothing reported
     assert ["git", "-C", "/wt", "add", "-A"] not in runner.calls  # clean -> no commit
+
+
+_RESULT_JSON = json.dumps(
+    {
+        "type": "result",
+        "subtype": "success",
+        "session_id": "sess-crew",
+        "total_cost_usd": 0.42,
+        "usage": {
+            "input_tokens": 7,
+            "output_tokens": 70,
+            "cache_read_input_tokens": 700,
+            "cache_creation_input_tokens": 0,
+        },
+        "modelUsage": {
+            "claude-opus-5-5": {
+                "inputTokens": 7,
+                "outputTokens": 70,
+                "cacheReadInputTokens": 700,
+                "cacheCreationInputTokens": 0,
+                "costUSD": 0.42,
+            }
+        },
+        "duration_ms": 1234,
+        "num_turns": 3,
+        "permission_denials": [],
+        "result": "done",
+    }
+)
+
+
+def test_direct_crew_parses_usage_from_the_json_result() -> None:
+    runner = RecordingRunner(stdout=_RESULT_JSON)  # same stdout for git too: dirty -> commits
+    adapter = DirectCrewAdapter(agent_cmd="claude -p", runner=runner)
+    crew = adapter.run(
+        Task(id="abc", prompt="add dark mode", repo="/repo"),
+        Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+    )
+    assert crew.usage is not None
+    assert crew.usage.session_id == "sess-crew"
+    assert crew.usage.cost_usd == 0.42 and crew.usage.cost_source == "claude-code-estimate"
+    assert crew.usage.usage.cache_read_input_tokens == 700
+    assert crew.usage.usage_by_model["claude-opus-5-5"].output_tokens == 70
+    assert crew.usage.num_turns == 3
+
+
+def test_direct_crew_leaves_a_non_claude_agent_command_untouched() -> None:
+    runner = RecordingRunner()
+    adapter = DirectCrewAdapter(agent_cmd="codex exec", runner=runner)
+    crew = adapter.run(
+        Task(id="abc", prompt="add dark mode", repo="/repo"),
+        Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+    )
+    assert runner.calls[0] == ["codex", "exec", "--", "add dark mode"]
+    assert crew.usage is None
 
 
 def test_direct_crew_commits_leftover_work_so_it_can_ship() -> None:
@@ -355,6 +426,20 @@ def test_command_gate_failure_is_a_verdict_not_an_exception() -> None:
     verdict = gate.evaluate(_TASK, _CREW)
     assert verdict.passed is False
     assert verdict.findings == ["gate reported failure"]
+    assert verdict.usage is None
+
+
+def test_command_gate_reads_the_usage_trailer_on_pass_and_fail() -> None:
+    trailer = "Review body.\nVERDICT: PASS\nUSAGE: " + _RESULT_JSON + "\n"
+    passing = RecordingRunner(stdout=trailer)
+    verdict = CommandGate("trine-eval", "review", runner=passing).evaluate(_TASK, _CREW)
+    assert verdict.passed is True
+    assert verdict.usage is not None and verdict.usage.cost_usd == 0.42
+
+    failing = RecordingRunner(stdout=trailer.replace("PASS", "FAIL - nope"), returncode=1)
+    verdict = CommandGate("trine-eval", "review", runner=failing).evaluate(_TASK, _CREW)
+    assert verdict.passed is False
+    assert verdict.usage is not None and verdict.usage.num_turns == 3
 
 
 # --- GitHost (cloud-runnable PR host) ------------------------------------------

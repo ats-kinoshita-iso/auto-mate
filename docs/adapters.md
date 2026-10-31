@@ -51,6 +51,8 @@ For real (non-dry) runs the agent command must be headless and allowed to edit f
 Claude Code also ships a stronger isolation flag, `--bare` (skips hooks, plugin sync, auto-memory, and CLAUDE.md auto-discovery entirely) - but it restricts auth to `ANTHROPIC_API_KEY`/apiKeyHelper (never OAuth or keychain), so it suits hermetic agents that need no project context; crews that should see the repo's CLAUDE.md and project skills while excluding only user-scope plugins are exactly what `--setting-sources project,local` is for.
 Work the agent leaves uncommitted is committed by the adapter (`automate/<task-id>: <prompt title>`): the ship gate pushes the branch, and only commits travel.
 
+**Usage capture.** When the agent command is Claude Code (`claude`, or a path to it), the adapter appends `--output-format json` unless the command already names a format, parses the JSON result (`session_id`, `total_cost_usd`, `usage`, `modelUsage`, `duration_ms`, `duration_api_ms`, `num_turns`, `subagent_stats`, `permission_denials`, `subtype`) into `CrewResult.usage`, and the run record sums crew and gate usage into `total_usage` and `total_cost_usd`. The cost is Claude Code's client-side estimate and is labelled `cost_source: claude-code-estimate`. Other agents run untouched and report `usage: null`; so does dry-run. The child agent runs with `CLAUDE_CODE_SESSION_ID` removed from its environment. Inside a Claude Code cloud session the child has still been observed to report the parent's session id; `AgentUsage.session_id_inherited` flags that case, and diagnostics then join on the task id instead (ADR-0006 in cloud-catcher).
+
 ### firstmate - [`FirstmateAdapter`](../src/automate/adapters/firstmate.py)
 
 - What it is: not a flag CLI and not a dispatch API. firstmate is a conversational supervisor - you *talk* to a first-mate agent (launch claude/codex/opencode/pi in the firstmate home) and its `AGENTS.md` runs a crew in tmux + treehouse worktrees.
@@ -84,6 +86,8 @@ The diff is embedded in the prompt (capped by `GATE_DIFF_MAX`), so the gate agen
 Because a gate agent needs no project context either, `GATE_AGENT_CMD=claude -p --bare` is a good fit when API-key auth is available: it makes the gate hermetic by construction (no hooks, no plugins, no CLAUDE.md) instead of by convention.
 `governance.sh` reviews scope drift, unexpected surface, and destructive operations through the 4M change-point lens; `codegen.sh` adversarially evaluates completeness, correctness, and craft against the intent.
 The two prompts split responsibilities explicitly so the gates stay independent signals rather than two copies of one review.
+
+**Usage trailer.** When the gate agent is Claude Code and names no `--output-format`, `gate-lib.sh` runs it in JSON mode, prints the review text (so the `VERDICT:` grep is unchanged) and then one line `USAGE: {...}` with the result's `session_id`, `total_cost_usd`, `usage`, `modelUsage`, durations and turn count. `CommandGate` parses that line into `Verdict.usage`. `GATE_OUTPUT_JSON=0` forces plain text, `=1` forces JSON for an agent not named `claude`; a Claude run that prints no result object falls back to its output verbatim.
 
 ## PR review - `PullRequestHost` + `Reviewer`
 

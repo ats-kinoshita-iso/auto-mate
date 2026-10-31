@@ -109,3 +109,7 @@ See [docs/architecture.md](docs/architecture.md) for the design, [docs/adapters.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## What a run record carries
+
+Every `RunRecord` (and `ReviewRecord`) now carries what the agents spent, when the agent is Claude Code: `crew.usage` and each `verdicts[].usage` hold the JSON result's tokens by model, Claude Code's cost estimate, durations and turn count, and `total_usage` / `total_cost_usd` sum them. This is the headless half of the stack's diagnostics (ADR-0006 in the cloud-catcher meta-repo); the interactive half is henkaten-council's SessionEnd hook. See [docs/adapters.md](docs/adapters.md) for the capture rules and the session-id caveat.

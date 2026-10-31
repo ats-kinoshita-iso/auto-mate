@@ -73,6 +73,7 @@ class Orchestrator:
         except Exception as exc:  # boundary: surface failures in the record
             record.status = RunStatus.FAILED
             record.log.append(f"run failed: {exc}")
+        record.summarize_usage()
         return record
 
     def _execute(self, task: Task, record: RunRecord) -> None:

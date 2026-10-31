@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from automate.adapters import DirectCrewAdapter, FirstmateAdapter
 from automate.config import Settings
-from automate.models import CrewResult, GateResult, RunStatus, Task, Verdict, Worktree
+from automate.models import (
+    AgentUsage,
+    CrewResult,
+    GateResult,
+    RunStatus,
+    Task,
+    TokenUsage,
+    Verdict,
+    Worktree,
+)
 from automate.orchestrator import Orchestrator
 
 TASK = Task(id="t1", prompt="add dark mode", repo="/repo")
@@ -22,22 +31,28 @@ class FakeTreehouse:
 
 
 class FakeCrew:
-    def __init__(self, *, changed: bool = True) -> None:
+    def __init__(self, *, changed: bool = True, usage: AgentUsage | None = None) -> None:
         self._changed = changed
+        self._usage = usage
 
     def run(self, task: Task, worktree: Worktree) -> CrewResult:
         return CrewResult(
-            task_id=task.id, branch=worktree.branch, changed=self._changed, summary="crew ran"
+            task_id=task.id,
+            branch=worktree.branch,
+            changed=self._changed,
+            summary="crew ran",
+            usage=self._usage,
         )
 
 
 class FakeGate:
-    def __init__(self, name: str, *, passed: bool = True) -> None:
+    def __init__(self, name: str, *, passed: bool = True, usage: AgentUsage | None = None) -> None:
         self._name = name
         self._passed = passed
+        self._usage = usage
 
     def evaluate(self, task: Task, crew: CrewResult) -> Verdict:
-        return Verdict(gate=self._name, passed=self._passed)
+        return Verdict(gate=self._name, passed=self._passed, usage=self._usage)
 
 
 class FakeShip:
@@ -121,6 +136,40 @@ def test_release_failure_does_not_mask_the_shipped_outcome() -> None:
     record = orchestrator.run(TASK)
     assert record.status is RunStatus.SHIPPED
     assert any("release failed" in line for line in record.log)
+
+
+def test_run_record_totals_crew_and_gate_usage() -> None:
+    crew_usage = AgentUsage(
+        usage=TokenUsage(input_tokens=100, output_tokens=10),
+        cost_usd=0.5,
+        cost_source="claude-code-estimate",
+    )
+    gate_usage = AgentUsage(
+        usage=TokenUsage(input_tokens=5, output_tokens=1, cache_read_input_tokens=50),
+        cost_usd=0.1,
+        cost_source="claude-code-estimate",
+    )
+    orchestrator = Orchestrator(
+        treehouse=FakeTreehouse(),
+        crew=FakeCrew(usage=crew_usage),
+        no_mistakes=FakeShip(),
+        gates=[
+            FakeGate("henkaten-council", usage=gate_usage),
+            FakeGate("trine-eval", usage=gate_usage),
+        ],
+    )
+    record = orchestrator.run(TASK)
+    assert record.total_usage == TokenUsage(
+        input_tokens=110, output_tokens=12, cache_read_input_tokens=100
+    )
+    assert record.total_cost_usd == 0.7
+    assert '"total_cost_usd":0.7' in record.model_dump_json()
+
+
+def test_run_record_totals_are_none_when_nothing_was_reported() -> None:
+    orchestrator, _ = _build()
+    record = orchestrator.run(TASK)
+    assert record.total_usage is None and record.total_cost_usd is None
 
 
 def test_stage_exception_is_captured_as_failed_and_keeps_worktree() -> None:
