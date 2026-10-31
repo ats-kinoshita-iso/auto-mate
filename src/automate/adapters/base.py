@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 
@@ -47,13 +48,15 @@ class CommandRunner:
         cwd: str | None = None,
         check: bool = True,
         timeout: float | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> CommandResult:
         """Execute ``command``; under dry-run, return a synthetic success instead.
 
         With ``check=False`` a non-zero exit is returned to the caller instead of
         raised, so gates can turn failures into verdicts. A ``timeout`` (seconds)
         bounds long-running externals such as agent harnesses; expiry raises
-        :class:`AdapterError`.
+        :class:`AdapterError`. ``env`` replaces the inherited environment when
+        given (agents get one without the parent's Claude Code session id).
         """
         if self._dry_run:
             return CommandResult(
@@ -70,6 +73,7 @@ class CommandRunner:
                 text=True,
                 check=False,
                 timeout=timeout,
+                env=dict(env) if env is not None else None,
             )
         except subprocess.TimeoutExpired as exc:
             raise AdapterError(

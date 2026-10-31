@@ -8,9 +8,11 @@ on PATH, so auto-mate runs anywhere - without firstmate's macOS/Linux + tmux sta
 
 from __future__ import annotations
 
+import os
 import shlex
 
 from automate.adapters.base import CommandRunner
+from automate.claude_output import SESSION_ENV, agent_env, parse_agent_usage, with_json_output
 from automate.models import CrewResult, Task, Worktree
 
 
@@ -39,18 +41,24 @@ class DirectCrewAdapter:
     def run(self, task: Task, worktree: Worktree) -> CrewResult:
         """Launch the agent in the worktree and report whether it produced changes."""
         # "--" ends option parsing: variadic flags (e.g. claude's --allowedTools)
-        # would otherwise swallow the prompt as more flag values.
-        self._runner.run(
-            [*shlex.split(self._agent_cmd), "--", task.prompt],
+        # would otherwise swallow the prompt as more flag values. A Claude Code
+        # agent is asked for its JSON result so the run record carries what it
+        # spent (ADR-0006 in cloud-catcher); other agents run untouched.
+        command = with_json_output(shlex.split(self._agent_cmd))
+        result = self._runner.run(
+            [*command, "--", task.prompt],
             cwd=worktree.path,
             timeout=self._agent_timeout,
+            env=agent_env(),
         )
+        usage = parse_agent_usage(result.stdout, parent_session_id=os.environ.get(SESSION_ENV))
         self._commit_leftovers(task, worktree)
         return CrewResult(
             task_id=task.id,
             branch=worktree.branch,
             changed=self._produced_changes(worktree, task.base_ref),
             summary=f"agent {self._agent_cmd!r} ran in {worktree.path}",
+            usage=usage,
         )
 
     def _commit_leftovers(self, task: Task, worktree: Worktree) -> None:
