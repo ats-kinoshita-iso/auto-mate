@@ -1,6 +1,6 @@
 # Handoff: rebuild henkaten-council's tool-call audit logger on native hooks
 
-**Status:** ready-to-apply reference implementation. The henkaten-council plugin repo is not
+**Status:** applied to henkaten-council on 2026-10-31 (sprint P0-HC-1 of the stack plan in cloud-catcher; the plugin now carries `scripts/log-tool-call.py` with bash and PowerShell wrappers, plus `session_id` and `tool_use_id` on every entry). Kept here as the record of why. Originally: ready-to-apply reference implementation. The henkaten-council plugin repo is not
 reachable from the session that produced this handoff, so these files are staged here (the
 stack's docs home) for manual application to the plugin.
 

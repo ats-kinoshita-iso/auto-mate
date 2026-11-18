@@ -104,6 +104,7 @@ class ReviewOrchestrator:
         except Exception as exc:  # boundary: surface failures in the record
             record.status = ReviewStatus.FAILED
             record.log.append(f"review failed: {exc}")
+        record.summarize_usage()
         return record
 
     def review_open(self, repo: str, *, post: bool = False) -> list[ReviewRecord]:

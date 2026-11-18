@@ -7,10 +7,12 @@ governance, trine-eval for codegen/evaluation. An empty command disables the gat
 
 from __future__ import annotations
 
+import os
 import shlex
 from typing import TYPE_CHECKING
 
 from automate.adapters.base import CommandRunner
+from automate.claude_output import SESSION_ENV, parse_usage_line
 from automate.models import CrewResult, Task, Verdict
 
 if TYPE_CHECKING:
@@ -57,12 +59,17 @@ class CommandGate:
             check=False,
             timeout=self._timeout,
         )
+        # Gate scripts that run a Claude Code agent print a ``USAGE: {...}`` line
+        # after the verdict (see scripts/gates/gate-lib.sh); it rides along on the
+        # verdict so run records carry what each gate spent.
+        usage = parse_usage_line(result.stdout, parent_session_id=os.environ.get(SESSION_ENV))
         if result.ok:
-            return Verdict(gate=self._gate, passed=True)
+            return Verdict(gate=self._gate, passed=True, usage=usage)
         return Verdict(
             gate=self._gate,
             passed=False,
             findings=[result.stderr.strip() or "gate reported failure"],
+            usage=usage,
         )
 
 
