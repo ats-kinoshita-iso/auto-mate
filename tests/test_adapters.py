@@ -355,6 +355,41 @@ def test_direct_crew_parses_usage_from_the_json_result() -> None:
     assert crew.usage.num_turns == 3
 
 
+def test_direct_crew_keeps_the_usage_of_an_agent_that_exits_with_an_error() -> None:
+    # claude -p exits 1 on an error result but still prints it (review C10).
+    capped = json.loads(_RESULT_JSON)
+    capped.update(subtype="error_max_budget_usd", is_error=True)
+    capped.pop("result")
+    runner = RecordingRunner(stdout=json.dumps(capped), returncode=1)
+    adapter = DirectCrewAdapter(agent_cmd="claude -p", runner=runner)
+    with pytest.raises(AdapterError) as caught:
+        adapter.run(
+            Task(id="abc", prompt="add dark mode", repo="/repo"),
+            Worktree(task_id="abc", path="/wt", branch="automate/abc"),
+        )
+    usage = caught.value.usage
+    assert usage is not None and usage.cap_hit == "budget" and usage.cost_usd == 0.42
+    assert ["git", "-C", "/wt", "add", "-A"] not in runner.calls  # failed: nothing committed
+
+
+def test_direct_crew_real_runner_keeps_usage_when_the_agent_exits_1(tmp_path: Path) -> None:
+    # The real CommandRunner, a stand-in claude that prints an error result and exits 1.
+    capped = json.loads(_RESULT_JSON)
+    capped.update(subtype="error_max_turns", is_error=True)
+    agent = tmp_path / "bin" / "claude"
+    agent.parent.mkdir()
+    agent.write_text("#!/usr/bin/env bash\ncat <<'EOF'\n" + json.dumps(capped) + "\nEOF\nexit 1\n")
+    agent.chmod(0o755)
+    adapter = DirectCrewAdapter(agent_cmd=f"{agent} -p", runner=CommandRunner(dry_run=False))
+    with pytest.raises(AdapterError) as caught:
+        adapter.run(
+            Task(id="abc", prompt="add dark mode", repo=str(tmp_path)),
+            Worktree(task_id="abc", path=str(tmp_path), branch="automate/abc"),
+        )
+    usage = caught.value.usage
+    assert usage is not None and usage.cap_hit == "turns" and usage.session_id == "sess-crew"
+
+
 def test_direct_crew_leaves_a_non_claude_agent_command_untouched() -> None:
     runner = RecordingRunner()
     adapter = DirectCrewAdapter(agent_cmd="codex exec", runner=runner)

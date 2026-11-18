@@ -7,9 +7,20 @@ import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from automate.models import AgentUsage
+
 
 class AdapterError(RuntimeError):
-    """Raised when an external command exits non-zero."""
+    """Raised when an external command exits non-zero.
+
+    ``usage`` carries what a headless agent reported before it failed: ``claude -p
+    --output-format json`` exits 1 on an error result (a turn or budget cap, an API
+    error) but still prints the result with its cost and usage.
+    """
+
+    def __init__(self, message: str, *, usage: AgentUsage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage
 
 
 @dataclass(frozen=True)

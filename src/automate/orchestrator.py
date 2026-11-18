@@ -8,9 +8,10 @@ from automate.adapters import (
     NoMistakesAdapter,
     TreehouseAdapter,
 )
+from automate.adapters.base import AdapterError
 from automate.config import Settings
 from automate.harnesses import harness_gates
-from automate.models import RunRecord, RunStatus, Task, Verdict, Worktree
+from automate.models import CrewResult, RunRecord, RunStatus, Task, Verdict, Worktree
 from automate.ports import CrewRunner, Gate, ShipGate, WorktreeProvider
 
 
@@ -73,6 +74,20 @@ class Orchestrator:
         except Exception as exc:  # boundary: surface failures in the record
             record.status = RunStatus.FAILED
             record.log.append(f"run failed: {exc}")
+            if (
+                isinstance(exc, AdapterError)
+                and exc.usage is not None
+                and record.crew is None
+                and record.worktree is not None
+            ):
+                # The crew's agent failed after reporting its spend: keep it.
+                record.crew = CrewResult(
+                    task_id=task.id,
+                    branch=record.worktree.branch,
+                    changed=False,
+                    summary=f"crew agent failed ({exc.usage.subtype or 'error'})",
+                    usage=exc.usage,
+                )
         record.summarize_usage()
         return record
 

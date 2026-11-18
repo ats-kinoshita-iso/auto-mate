@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import shlex
 
-from automate.adapters.base import CommandRunner
+from automate.adapters.base import AdapterError, CommandRunner
 from automate.claude_output import SESSION_ENV, agent_env, parse_agent_usage, with_json_output
 from automate.models import CrewResult, Task, Worktree
 
@@ -50,8 +50,17 @@ class DirectCrewAdapter:
             cwd=worktree.path,
             timeout=self._agent_timeout,
             env=agent_env(),
+            check=False,
         )
         usage = parse_agent_usage(result.stdout, parent_session_id=os.environ.get(SESSION_ENV))
+        if not result.ok:
+            # The result printed before a non-zero exit (a cap or an API error) still
+            # carries what the agent spent; the error keeps it for the run record.
+            raise AdapterError(
+                f"command failed ({result.returncode}): {shlex.join(result.command)}\n"
+                f"{result.stderr}",
+                usage=usage,
+            )
         self._commit_leftovers(task, worktree)
         return CrewResult(
             task_id=task.id,

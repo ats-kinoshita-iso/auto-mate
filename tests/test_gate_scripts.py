@@ -139,3 +139,36 @@ def test_json_mode_can_be_forced_off(repo: Path, tmp_path: Path) -> None:
     agent = _fake_agent(tmp_path, "Fine.\nVERDICT: PASS", as_json=False)
     proc = _run_gate(repo, agent, GATE_OUTPUT_JSON="0")
     assert proc.returncode == 0, proc.stderr
+
+
+def test_an_agent_error_result_still_prints_its_usage_and_no_denied_inputs(
+    repo: Path, tmp_path: Path
+) -> None:
+    # claude -p exits 1 on a budget cap but prints its result (review C10); denied
+    # calls keep only their tool names in the trailer (review C42).
+    result = {
+        "type": "result",
+        "subtype": "error_max_budget_usd",
+        "is_error": True,
+        "session_id": "sess-capped",
+        "total_cost_usd": 0.05,
+        "usage": {"input_tokens": 0, "output_tokens": 0},
+        "modelUsage": {"model-a": {"inputTokens": 500, "outputTokens": 50, "costUSD": 0.05}},
+        "permission_denials": [
+            {"tool_name": "Bash", "tool_use_id": "t1", "tool_input": {"command": "cat secret.env"}}
+        ],
+    }
+    script = tmp_path / "bin" / "claude"
+    script.parent.mkdir(exist_ok=True)
+    script.write_text(
+        "#!/usr/bin/env bash\ncat <<'EOF_FAKE'\n" + json.dumps(result) + "\nEOF_FAKE\nexit 1\n"
+    )
+    script.chmod(0o755)
+    proc = _run_gate(repo, script)
+    assert proc.returncode == 2
+    usage_lines = [line for line in proc.stdout.splitlines() if line.startswith("USAGE: ")]
+    assert len(usage_lines) == 1
+    usage = json.loads(usage_lines[0][len("USAGE: ") :])
+    assert usage["total_cost_usd"] == 0.05 and usage["subtype"] == "error_max_budget_usd"
+    assert usage["permission_denials"] == [{"tool_name": "Bash"}]
+    assert "secret.env" not in proc.stdout

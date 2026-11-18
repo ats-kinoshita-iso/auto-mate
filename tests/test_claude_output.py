@@ -56,7 +56,10 @@ def test_parse_success_result() -> None:
     assert usage is not None
     assert usage.session_id == "sess-child"
     assert usage.session_id_inherited is False
-    assert usage.usage.input_tokens == 2
+    # Tokens are the per-model totals (review C09); the top-level usage is the last turn.
+    assert usage.usage.input_tokens == 1179 and usage.usage.output_tokens == 18
+    assert usage.last_turn_usage is not None
+    assert (usage.last_turn_usage.input_tokens, usage.last_turn_usage.output_tokens) == (2, 4)
     assert usage.usage.cache_read_input_tokens == 26159
     assert usage.usage.cache_creation_input_tokens == 15800
     assert usage.usage_by_model["claude-haiku-5-5"].input_tokens == 1179
@@ -125,3 +128,52 @@ def test_parse_usage_line_reads_the_gate_trailer() -> None:
     usage = parse_usage_line(stdout)
     assert usage is not None and usage.cost_usd == pytest.approx(0.00354849)
     assert parse_usage_line("Review body.\nVERDICT: PASS\n") is None
+
+
+def _model(inp: int, out: int, cache_read: int = 0, cost: float = 0.0) -> dict[str, object]:
+    return {
+        "inputTokens": inp,
+        "outputTokens": out,
+        "cacheReadInputTokens": cache_read,
+        "cacheCreationInputTokens": 0,
+        "costUSD": cost,
+    }
+
+
+def test_usage_sums_every_model_including_subagents() -> None:
+    # A run whose subagent used another model: the top-level usage is the main
+    # thread's final turn only, modelUsage covers the whole run (review C09).
+    payload = {
+        **RESULT,
+        "usage": {"input_tokens": 3, "output_tokens": 5},
+        "modelUsage": {"model-a": _model(100, 40, 1000, 0.3), "model-b": _model(20, 8, 0, 0.02)},
+        "total_cost_usd": 0.32,
+    }
+    usage = parse_agent_usage(json.dumps(payload))
+    assert usage is not None
+    assert (usage.usage.input_tokens, usage.usage.output_tokens) == (120, 48)
+    assert usage.usage.cache_read_input_tokens == 1000
+    assert usage.last_turn_usage is not None and usage.last_turn_usage.output_tokens == 5
+
+
+def test_budget_capped_result_keeps_its_tokens() -> None:
+    # A budget-capped result reports all-zero top-level usage; modelUsage has the spend.
+    payload = {
+        **RESULT,
+        "subtype": "error_max_budget_usd",
+        "is_error": True,
+        "usage": {"input_tokens": 0, "output_tokens": 0},
+        "modelUsage": {"model-a": _model(900, 300, 0, 0.11)},
+        "total_cost_usd": 0.11,
+    }
+    payload.pop("result")
+    usage = parse_agent_usage(json.dumps(payload))
+    assert usage is not None and usage.cap_hit == "budget"
+    assert (usage.usage.input_tokens, usage.usage.output_tokens) == (900, 300)
+
+
+def test_usage_falls_back_to_the_top_level_without_model_usage() -> None:
+    payload = {**RESULT, "usage": {"input_tokens": 7, "output_tokens": 9}}
+    payload.pop("modelUsage")
+    usage = parse_agent_usage(json.dumps(payload))
+    assert usage is not None and (usage.usage.input_tokens, usage.usage.output_tokens) == (7, 9)

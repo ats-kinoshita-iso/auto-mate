@@ -66,7 +66,15 @@ class AgentUsage(BaseModel):
 
     session_id: str | None = None
     session_id_inherited: bool = False
-    usage: TokenUsage = Field(default_factory=TokenUsage)
+    usage: TokenUsage = Field(
+        default_factory=TokenUsage,
+        description="Tokens over the whole run, subagents included: the sum of the "
+        "result's modelUsage (the top-level usage when modelUsage is absent).",
+    )
+    last_turn_usage: TokenUsage | None = Field(
+        default=None,
+        description="The result's top-level usage: the main thread's final turn only.",
+    )
     usage_by_model: dict[str, TokenUsage] = Field(default_factory=dict)
     cost_usd: float | None = None
     cost_source: Literal["claude-code-estimate"] | None = None

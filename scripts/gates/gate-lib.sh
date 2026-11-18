@@ -14,8 +14,10 @@
 #
 # Output: the agent's review text, ending in its VERDICT line, followed (when the
 # agent is Claude Code) by one line `USAGE: {...}` carrying the JSON result's
-# session_id, total_cost_usd, usage, modelUsage, durations and turn count. auto-mate's
-# CommandGate parses that line into Verdict.usage (ADR-0006 in cloud-catcher).
+# session_id, total_cost_usd, usage, modelUsage, durations, turn count and the tool
+# names of denied calls. auto-mate's CommandGate parses that line into
+# Verdict.usage (ADR-0006 in cloud-catcher). When the agent exits non-zero with a
+# result object (a cap or an API error), the USAGE line is printed before exit 2.
 #
 # Configuration (environment):
 #   GATE_AGENT_CMD   headless agent command           (default: "claude -p")
@@ -54,15 +56,11 @@ case "${GATE_OUTPUT_JSON:-}" in 1|true|yes) json_mode=1 ;; 0|false|no) json_mode
 # "--" ends option parsing so a configured variadic flag cannot swallow the prompt.
 # The child must not inherit the orchestrating session's id (it would report it as
 # its own and break the session_id join in diagnostics).
-if [ "$json_mode" = 1 ]; then
-  out_raw="$(env -u CLAUDE_CODE_SESSION_ID ${agent_cmd} --output-format json -- "$prompt" 2>&1)" || {
-    printf '%s\n' "$out_raw" | tail -c 400 >&2
-    echo "${gate_name} gate: agent command failed" >&2
-    exit 2
-  }
-  # Split the JSON result into the review text (for the verdict grep) and the
-  # USAGE line. If the output is not a result object, fall back to it verbatim.
-  if parsed="$(printf '%s' "$out_raw" | python3 -c '
+# Split a JSON result into the review text (for the verdict grep) and the USAGE
+# line; exit 3 when the output is not a result object. Denied calls keep only
+# their tool names: the full tool_input does not belong in console or CI logs.
+split_result() {
+  python3 -c '
 import json, sys
 raw = sys.stdin.read().strip()
 obj = None
@@ -83,8 +81,28 @@ text = obj.get("result") if isinstance(obj.get("result"), str) else ""
 keep = {k: obj[k] for k in ("type", "subtype", "is_error", "session_id", "total_cost_usd",
         "usage", "modelUsage", "duration_ms", "duration_api_ms", "num_turns",
         "permission_denials", "subagent_stats") if k in obj}
+if isinstance(keep.get("permission_denials"), list):
+    keep["permission_denials"] = [
+        {"tool_name": d.get("tool_name")} if isinstance(d, dict) else {}
+        for d in keep["permission_denials"]
+    ]
 sys.stdout.write(text.rstrip("\n") + "\nUSAGE: " + json.dumps(keep) + "\n")
-')"; then
+'
+}
+
+if [ "$json_mode" = 1 ]; then
+  out_raw="$(env -u CLAUDE_CODE_SESSION_ID ${agent_cmd} --output-format json -- "$prompt" 2>&1)" || {
+    # An error result (a turn or budget cap, an API error) exits non-zero but
+    # still reports what the agent spent: print its USAGE line before failing.
+    if parsed="$(printf '%s' "$out_raw" | split_result)"; then
+      printf '%s\n' "$parsed"
+    fi
+    printf '%s\n' "$out_raw" | tail -c 400 >&2
+    echo "${gate_name} gate: agent command failed" >&2
+    exit 2
+  }
+  # If the output is not a result object, fall back to it verbatim.
+  if parsed="$(printf '%s' "$out_raw" | split_result)"; then
     out="$parsed"
   else
     out="$out_raw"

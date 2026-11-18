@@ -6,6 +6,13 @@ model), ``duration_ms``, ``duration_api_ms``, ``num_turns``, ``subtype`` and
 ``permission_denials``. This module turns it into :class:`AgentUsage` and owns
 the two command-line conventions around it: asking for JSON output and not
 handing the child the parent's Claude Code session id.
+
+Token totals come from ``modelUsage``, which covers the whole process,
+subagents included, and agrees with ``total_cost_usd``. The top-level ``usage``
+covers only the final turn of the main thread (after a background subagent's
+notification, that is one turn), and a budget-capped result reports it as
+zeros, so it is kept apart as ``last_turn_usage``. ``num_turns``,
+``duration_ms`` and ``permission_denials`` are taken as the result reports them.
 """
 
 from __future__ import annotations
@@ -126,10 +133,13 @@ def parse_agent_usage(stdout: str, *, parent_session_id: str | None = None) -> A
     stats = obj.get("subagent_stats")
     spawned = _int(stats.get("spawned")) if isinstance(stats, dict) else None
     denials = obj.get("permission_denials")
+    last_turn = _tokens(obj.get("usage"), _USAGE_KEYS)
+    total = sum(by_model.values(), TokenUsage()) if by_model else last_turn
     return AgentUsage(
         session_id=session_id,
         session_id_inherited=bool(session_id and session_id == parent_session_id),
-        usage=_tokens(obj.get("usage"), _USAGE_KEYS),
+        usage=total,
+        last_turn_usage=last_turn,
         usage_by_model=by_model,
         cost_usd=cost_usd,
         cost_source="claude-code-estimate" if cost_usd is not None else None,

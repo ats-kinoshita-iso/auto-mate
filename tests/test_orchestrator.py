@@ -195,3 +195,31 @@ def test_from_settings_selects_crew_backend() -> None:
     assert isinstance(direct._crew, DirectCrewAdapter)
     firstmate = Orchestrator.from_settings(Settings(_env_file=None, crew_backend="firstmate"))
     assert isinstance(firstmate._crew, FirstmateAdapter)
+
+
+def test_a_crew_that_fails_after_reporting_keeps_its_usage_on_the_failed_record() -> None:
+    from automate.adapters.base import AdapterError
+
+    spent = AgentUsage(
+        usage=TokenUsage(input_tokens=900, output_tokens=300),
+        cost_usd=0.11,
+        cost_source="claude-code-estimate",
+        subtype="error_max_budget_usd",
+        cap_hit="budget",
+    )
+
+    class CappedCrew:
+        def run(self, task: Task, worktree: Worktree) -> CrewResult:
+            raise AdapterError("command failed (1): claude -p", usage=spent)
+
+    orchestrator = Orchestrator(
+        treehouse=FakeTreehouse(),
+        crew=CappedCrew(),
+        no_mistakes=FakeShip(),
+        gates=[FakeGate("henkaten-council")],
+    )
+    record = orchestrator.run(TASK)
+    assert record.status is RunStatus.FAILED
+    assert record.crew is not None and record.crew.usage == spent and not record.crew.changed
+    assert record.total_cost_usd == 0.11
+    assert record.total_usage == TokenUsage(input_tokens=900, output_tokens=300)
